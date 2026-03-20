@@ -13,7 +13,7 @@ conversations = {}  # session_id -> {"project_id": ..., "last_access": ...}
 # Model config - easily swappable
 LOCAL_MODEL_URL = os.environ.get("MODEL_URL", "http://127.0.0.1:8081/v1")
 LOCAL_MODEL_NAME = os.environ.get("MODEL_NAME", "adapter")
-OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "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")
+OPENROUTER_KEY = os.environ.get("OPENROUTER_KEY", "")
 USE_LOCAL = os.environ.get("USE_LOCAL", "true").lower() == "true"
 
 def get_model():

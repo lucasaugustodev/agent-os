@@ -121,7 +121,7 @@ function Flows(){
           c.jsxs('div',{style:{display:'flex',gap:'4px',marginBottom:'10px'},children:[
             selectedFlow.status==='backlog'&&c.jsx('button',{onClick:()=>startFlow(selectedFlow.id),style:{padding:'4px 10px',borderRadius:'4px',border:'none',background:'#00e5cc',color:'#0a0e17',fontSize:'10px',cursor:'pointer',fontWeight:500},children:'Iniciar'}),
             (selectedFlow.status==='running'||selectedFlow.status==='backlog')&&c.jsx('button',{onClick:()=>cancelFlow(selectedFlow.id),style:{padding:'4px 10px',borderRadius:'4px',border:'none',background:'rgba(255,77,77,0.15)',color:'#ff6b6b',fontSize:'10px',cursor:'pointer'},children:'Cancelar'}),
-            selectedFlow.thread_id&&c.jsx('button',{onClick:()=>{/* TODO: open thread */},style:{padding:'4px 10px',borderRadius:'4px',border:'none',background:'rgba(255,255,255,0.06)',color:'#888',fontSize:'10px',cursor:'pointer'},children:'Ver Thread'}),
+            selectedFlow.thread_id&&c.jsx('button',{onClick:()=>{window.location.hash='thread:'+selectedFlow.thread_id},style:{padding:'4px 10px',borderRadius:'4px',border:'none',background:'rgba(255,255,255,0.06)',color:'#888',fontSize:'10px',cursor:'pointer'},children:'Ver Thread'}),
           ]}),
           // Steps
           c.jsx('div',{style:{fontSize:'10px',fontWeight:600,color:'#aaa',marginBottom:'6px'},children:'Etapas'}),

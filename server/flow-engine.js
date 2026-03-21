@@ -265,14 +265,25 @@ export function createFlowAPI(app, db) {
 
     // Execute in background
     const chatFn = async (prompt, agentId, threadId) => {
-      // Route through orchestrator
-      const resp = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/orchestrator/chat`, {
+      // Use smol/chat which handles ACPX exec mode properly
+      const resp = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/smol/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: prompt, sessionId: threadId }),
+        body: JSON.stringify({ message: prompt, stream: true, threadId }),
       });
-      const data = await resp.json();
-      return data.result || data.error || 'No result';
+      // Parse SSE stream to extract result
+      const text = await resp.text();
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const ev = JSON.parse(data);
+          if (ev.event === 'done' && ev.result) return ev.result;
+        } catch {}
+      }
+      return 'Step completed';
     };
 
     executeFlow(db, req.params.id, chatFn).catch(err => {

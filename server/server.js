@@ -558,6 +558,8 @@ app.post('/api/smol/chat', async (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
 
       // Step 1: Route via orchestrator
       res.write('data: ' + JSON.stringify({ event: 'status', text: 'Analisando...' }) + '\n\n');
@@ -645,15 +647,58 @@ app.post('/api/smol/chat', async (req, res) => {
         res.end();
 
       } else {
-        // Gestor - stream via HF API
+        // Gestor - stream directly from HF API with real-time token output
         res.write('data: ' + JSON.stringify({ event: 'status', text: 'Gestor pensando...' }) + '\n\n');
-        const chatResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/chat', {
+
+        const HF_TOKEN = process.env.HF_TOKEN;
+        const systemPrompt = `Voce e o assistente do Agent OS, um sistema operacional de agentes IA da Hub Formaturas. Responda em portugues de forma clara e amigavel.\n\nO Agent OS tem: Browser, Terminal, SmolChat (chat IA), Agents (gestao), Supabase, GitHub, PM2 Manager, File Explorer.\nAgentes: Claude Code (programacao), SQL Agent (queries banco), Gestor (voce, duvidas gerais).`;
+
+        const hfResp = await fetch('https://router.huggingface.co/groq/openai/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, message }),
+          headers: {
+            'Authorization': 'Bearer ' + HF_TOKEN,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: routing.rewritten_prompt || message },
+            ],
+            max_tokens: 1024,
+            temperature: 0.7,
+            stream: true,
+          }),
         });
-        const result = await chatResp.json();
-        res.write('data: ' + JSON.stringify({ event: 'done', result: result.result }) + '\n\n');
+
+        let fullResult = '';
+        const reader = hfResp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta?.content;
+              if (delta) {
+                fullResult += delta;
+                // Send partial result every few tokens so UI updates
+                res.write('data: ' + JSON.stringify({ event: 'status', text: 'Gestor escrevendo...' }) + '\n\n');
+              }
+            } catch {}
+          }
+        }
+
+        res.write('data: ' + JSON.stringify({ event: 'done', result: fullResult || 'Sem resposta.' }) + '\n\n');
         res.write('data: [DONE]\n\n');
         res.end();
       }

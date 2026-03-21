@@ -1,5 +1,7 @@
 import { createOrchestratorAPI } from "./orchestrator.js";
 import { createDatabaseAPI } from "./database.js";
+import db from "./database.js";
+import { createMemoryAPI, organizeMessage } from "./memory-organizer.js";
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -717,6 +719,14 @@ app.post('/api/smol/chat', async (req, res) => {
         });
         const sqlData = await sqlResp.json();
         const sqlResult = sqlData.choices[0].text.trim();
+        // Auto-save
+        try {
+          const conv = db.prepare('INSERT INTO conversations (agent_id, session_id, title) VALUES (?, ?, ?)').run('sql', sessionId, message.substring(0, 80));
+          db.prepare('INSERT INTO messages (conversation_id, role, content, agent_id, model_id) VALUES (?, ?, ?, ?, ?)').run(conv.lastInsertRowid, 'user', message, null, null);
+          db.prepare('INSERT INTO messages (conversation_id, role, content, agent_id, model_id) VALUES (?, ?, ?, ?, ?)').run(conv.lastInsertRowid, 'assistant', sqlResult, 'sql', 'agent-os-1.5b');
+          organizeMessage(db, { content: message + '\n' + sqlResult }, conv.lastInsertRowid, 'sql').catch(() => {});
+        } catch {}
+
         res.write('data: ' + JSON.stringify({ event: 'done', result: sqlResult }) + '\n\n');
         res.write('data: [DONE]\n\n');
         res.end();
@@ -770,6 +780,15 @@ app.post('/api/smol/chat', async (req, res) => {
             } catch {}
           }
         }
+
+        // Auto-save to database
+        try {
+          const conv = db.prepare('INSERT INTO conversations (agent_id, session_id, title) VALUES (?, ?, ?)').run('gestor', sessionId, message.substring(0, 80));
+          db.prepare('INSERT INTO messages (conversation_id, role, content, agent_id, model_id) VALUES (?, ?, ?, ?, ?)').run(conv.lastInsertRowid, 'user', message, null, null);
+          db.prepare('INSERT INTO messages (conversation_id, role, content, agent_id, model_id) VALUES (?, ?, ?, ?, ?)').run(conv.lastInsertRowid, 'assistant', fullResult, 'gestor', 'llama-3.3-70b');
+          // Background: organize memory
+          organizeMessage(db, { content: message + '\n' + fullResult }, conv.lastInsertRowid, 'gestor').catch(() => {});
+        } catch {}
 
         res.write('data: ' + JSON.stringify({ event: 'done', result: fullResult || 'Sem resposta.' }) + '\n\n');
         res.write('data: [DONE]\n\n');
@@ -827,7 +846,8 @@ app.use('/api/launcher', async (req, res) => {
 // --- Orchestrator API ---
 const orchestrator = createOrchestratorAPI(app);
 createDatabaseAPI(app);
-console.log("Orchestrator + Database loaded");
+createMemoryAPI(app, db);
+console.log("Orchestrator + Database + Memory loaded");
 
 
 // --- SPA fallback ---

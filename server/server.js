@@ -547,32 +547,61 @@ app.get('/api/github/notifications', async (_req, res) => {
 
 // --- SmolAgent daemon proxy ---
 app.post('/api/smol/chat', async (req, res) => {
+  // Route through orchestrator - classifies intent and sends to correct agent
   try {
-    const isStream = req.body.stream;
-    const resp = await fetch('http://127.0.0.1:8082/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body),
-    });
-    if (isStream) {
+    const { message, stream } = req.body;
+    if (!message) return res.status(400).json({ error: 'message required' });
+
+    const sessionId = req.body.sessionId || 'smolchat-default';
+
+    if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      const reader = resp.body.getReader();
-      const pump = async () => {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) { res.end(); break; }
-          res.write(value);
-        }
-      };
-      await pump();
+
+      // Step 1: Route via orchestrator
+      const routeResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+      const routing = await routeResp.json();
+
+      // Send routing status
+      res.write('data: ' + JSON.stringify({ event: 'status', text: 'Roteando para ' + (routing.agent === 'sql' ? 'SQL Agent (1.5B local)' : routing.agent === 'claude' ? 'Claude Code' : 'Gestor (Llama 70B)') + '...' }) + '\n\n');
+
+      // Step 2: Execute via orchestrator
+      const chatResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, message }),
+      });
+      const result = await chatResp.json();
+
+      // Send agent info
+      res.write('data: ' + JSON.stringify({ event: 'status', text: result.agentName + ' respondendo...' }) + '\n\n');
+
+      // Send result
+      res.write('data: ' + JSON.stringify({ event: 'done', result: result.result }) + '\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
     } else {
-      const data = await resp.text();
-      res.status(resp.status).type('application/json').send(data);
+      // Non-streaming: just proxy to orchestrator
+      const chatResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, message }),
+      });
+      const data = await chatResp.text();
+      res.status(chatResp.status).type('application/json').send(data);
     }
   } catch (err) {
-    res.status(502).json({ error: 'SmolAgent unavailable', detail: err.message });
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'Orchestrator unavailable', detail: err.message });
+    } else {
+      res.write('data: ' + JSON.stringify({ event: 'done', result: 'Erro: ' + err.message }) + '\n\n');
+      res.end();
+    }
   }
 });
 

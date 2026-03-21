@@ -26,6 +26,14 @@ function Flows(){
   ];
 
   (0,o.useEffect)(()=>{loadData();const iv=setInterval(loadData,5000);return()=>clearInterval(iv)},[]);
+  // Auto-poll thread events when viewing running flow
+  (0,o.useEffect)(()=>{
+    if(!selectedFlow?.thread_id) return;
+    const pollThread=()=>{fetch('/api/threads/'+selectedFlow.thread_id+'/events').then(r=>r.json()).then(setThreadEvents).catch(()=>{})};
+    pollThread();
+    const iv2=setInterval(pollThread,3000);
+    return()=>clearInterval(iv2);
+  },[selectedFlow?.thread_id,viewMode]);
   (0,o.useEffect)(()=>{if(chatRef.current) chatRef.current.scrollTop=chatRef.current.scrollHeight},[chatMessages]);
 
   function loadData(){
@@ -56,7 +64,37 @@ function Flows(){
     setShowCreate(false);setNewInput('');setNewTemplate('');loadData();
   }
 
-  async function startFlow(id){await fetch('/api/flows/'+id+'/start',{method:'POST'});loadData()}
+  async function startFlow(id){
+    await fetch('/api/flows/'+id+'/start',{method:'POST'});
+    setChatOpen(true);
+    setChatMessages(prev=>[...prev,{role:'assistant',text:'Flow iniciado! Vou monitorar a execucao...'}]);
+    // Start monitoring
+    const monitorId=setInterval(async()=>{
+      try{
+        const resp=await fetch('/api/flows/'+id);
+        const f=await resp.json();
+        const runningStep=(f.steps||[]).find(s=>s.status==='running');
+        if(runningStep){
+          setChatMessages(prev=>{
+            const last=prev[prev.length-1];
+            if(last?.text?.includes(runningStep.name)) return prev;
+            return[...prev,{role:'assistant',text:'Etapa '+(runningStep.step_index+1)+'/'+f.total_steps+': '+runningStep.name+' (@'+agentLabel(runningStep.agent_id)+') em andamento...'}];
+          });
+        }
+        if(f.status==='completed'){
+          clearInterval(monitorId);
+          setChatMessages(prev=>[...prev,{role:'assistant',text:'Flow concluido com sucesso! Todas as '+f.total_steps+' etapas foram executadas.'}]);
+          loadData();
+        }
+        if(f.status==='failed'){
+          clearInterval(monitorId);
+          setChatMessages(prev=>[...prev,{role:'assistant',text:'Flow falhou: '+(f.output||'erro desconhecido')}]);
+          loadData();
+        }
+      }catch{}
+    },4000);
+    loadData();
+  }
   async function cancelFlow(id){await fetch('/api/flows/'+id+'/cancel',{method:'POST'});loadData()}
 
   async function sendChat(){
@@ -120,7 +158,7 @@ function Flows(){
           // THREAD VIEW
           c.jsx('div',{className:'flex-1 overflow-y-auto',style:{padding:'12px 16px'},children:
             threadEvents.length===0?c.jsx('div',{style:{textAlign:'center',padding:'20px',color:'#555',fontSize:'11px'},children:'Carregando eventos...'}):
-            threadEvents.map(ev=>c.jsxs('div',{key:ev.id,style:{padding:'8px 12px',marginBottom:'6px',borderRadius:'6px',background:ev.type==='error'?'rgba(255,77,77,0.08)':ev.type==='status'?'rgba(0,229,204,0.05)':'rgba(255,255,255,0.03)',borderLeft:'3px solid '+(ev.type==='error'?'#ff6b6b':ev.type==='status'?'#00e5cc':ev.type==='agent_response'?'#4ade80':'rgba(255,255,255,0.1)')},children:[
+            threadEvents.filter(ev=>(ev.type==='status'&&ev.agent_id==='flow-agent')||ev.type==='agent_response'||ev.type==='error').map(ev=>c.jsxs('div',{key:ev.id,style:{padding:'8px 12px',marginBottom:'6px',borderRadius:'6px',background:ev.type==='error'?'rgba(255,77,77,0.08)':ev.type==='status'?'rgba(0,229,204,0.05)':'rgba(255,255,255,0.03)',borderLeft:'3px solid '+(ev.type==='error'?'#ff6b6b':ev.type==='status'?'#00e5cc':ev.type==='agent_response'?'#4ade80':'rgba(255,255,255,0.1)')},children:[
               c.jsxs('div',{style:{display:'flex',justifyContent:'space-between',fontSize:'10px',marginBottom:'3px'},children:[
                 c.jsxs('span',{style:{color:'#ccc',fontWeight:500},children:[tIcon(ev.type),' ',ev.type.replace(/_/g,' '),ev.agent_id?' \u00B7 '+agentLabel(ev.agent_id):'']}),
                 c.jsx('span',{style:{color:'#666'},children:new Date(ev.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})})

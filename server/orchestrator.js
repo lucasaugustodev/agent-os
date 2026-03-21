@@ -114,8 +114,8 @@ async function routeMessage(userMessage) {
 // Execute via ACPX (Claude Code)
 async function executeAcpx(sessionName, prompt) {
   return new Promise((resolve, reject) => {
-    const args = ['claude', '-s', sessionName, prompt];
-    const proc = spawn('acpx', args, {
+    const args = ['-u', 'claude', 'acpx', 'claude', '-s', sessionName, prompt];
+    const proc = spawn('sudo', args, {
       cwd: '/home/claude',
       timeout: 120000,
       env: { ...process.env, HOME: '/home/claude' },
@@ -142,8 +142,8 @@ async function executeAcpx(sessionName, prompt) {
 // Execute via ACPX streaming (returns EventEmitter)
 function executeAcpxStream(sessionName, prompt) {
   const emitter = new EventEmitter();
-  const args = ['claude', '-s', sessionName, '--format', 'json', prompt];
-  const proc = spawn('acpx', args, {
+  const args = ['-u', 'claude', 'acpx', 'claude', '-s', sessionName, '--format', 'json', prompt];
+  const proc = spawn('sudo', args, {
     cwd: '/home/claude',
     timeout: 120000,
     env: { ...process.env, HOME: '/home/claude' },

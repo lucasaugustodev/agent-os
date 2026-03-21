@@ -570,11 +570,33 @@ app.post('/api/smol/chat', async (req, res) => {
         body: JSON.stringify({ message }),
       });
       const routing = await routeResp.json();
-      const agentLabel = routing.agent === 'sql' ? 'SQL Agent (1.5B)' : routing.agent === 'claude' ? 'Claude Code' : 'Gestor';
-      res.write('data: ' + JSON.stringify({ event: 'status', text: agentLabel + '...' }) + '\n\n');
 
       // Step 2: Execute based on agent type
       if (routing.agent === 'claude') {
+        // Llama responds FIRST telling user what's happening
+        const HF_TOKEN_PRE = process.env.HF_TOKEN;
+        try {
+          const preResp = await fetch('https://router.huggingface.co/groq/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + HF_TOKEN_PRE, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'llama-3.3-70b-versatile',
+              messages: [
+                { role: 'system', content: 'Voce e o gestor do Agent OS. O usuario pediu uma tarefa de codigo. Responda em 1-2 frases curtas em portugues dizendo que vai encaminhar pro Claude Code e o que ele vai fazer. Seja direto e amigavel. Nao use emoji.' },
+                { role: 'user', content: message },
+              ],
+              max_tokens: 100,
+              temperature: 0.7,
+            }),
+          });
+          const preData = await preResp.json();
+          const preMsg = preData.choices?.[0]?.message?.content || 'Encaminhando para o Claude Code...';
+          // Send Llama's intro as a partial message
+          res.write('data: ' + JSON.stringify({ event: 'status', text: preMsg }) + '\n\n');
+        } catch {
+          res.write('data: ' + JSON.stringify({ event: 'status', text: 'Encaminhando para o Claude Code...' }) + '\n\n');
+        }
+
         // Stream Claude Code via ACPX exec (no persistent session needed)
         const { spawn } = await import('child_process');
 
@@ -717,8 +739,6 @@ app.post('/api/smol/chat', async (req, res) => {
               const delta = parsed.choices?.[0]?.delta?.content;
               if (delta) {
                 fullResult += delta;
-                // Send partial result every few tokens so UI updates
-                res.write('data: ' + JSON.stringify({ event: 'status', text: 'Gestor escrevendo...' }) + '\n\n');
               }
             } catch {}
           }

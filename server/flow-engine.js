@@ -52,6 +52,12 @@ export function setupFlowTables(db) {
     );
   `);
 
+  try { db.exec('ALTER TABLE flows ADD COLUMN schedule TEXT'); } catch {}
+  try { db.exec('ALTER TABLE flows ADD COLUMN schedule_cron TEXT'); } catch {}
+  try { db.exec('ALTER TABLE flows ADD COLUMN next_run DATETIME'); } catch {}
+  try { db.exec('ALTER TABLE flows ADD COLUMN last_run DATETIME'); } catch {}
+  try { db.exec('ALTER TABLE flows ADD COLUMN run_count INTEGER DEFAULT 0'); } catch {}
+
   // Seed default templates
   const insert = db.prepare('INSERT OR IGNORE INTO flow_templates (id, name, description, steps, tags) VALUES (?, ?, ?, ?, ?)');
 
@@ -299,6 +305,55 @@ export function createFlowAPI(app, db) {
 
   app.post('/api/flows/:id/cancel', (req, res) => {
     db.prepare('UPDATE flows SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('cancelled', req.params.id);
+    res.json({ ok: true });
+  });
+
+
+  // Schedule check - runs every 60s
+  setInterval(() => {
+    try {
+      const due = db.prepare("SELECT * FROM flows WHERE schedule IS NOT NULL AND status = 'scheduled' AND next_run <= datetime('now')").all();
+      for (const flow of due) {
+        console.log('[FLOW] Running scheduled flow:', flow.name);
+        db.prepare("UPDATE flows SET status = 'backlog', run_count = run_count + 1, last_run = datetime('now') WHERE id = ?").run(flow.id);
+        // Auto-start
+        const chatFn = async (prompt, agentId, threadId) => {
+          const resp = await fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/smol/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: prompt, stream: true, threadId }),
+          });
+          const text = await resp.text();
+          const lines = text.split('\n');
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try { const ev = JSON.parse(data); if (ev.event === 'done' && ev.result) return ev.result; } catch {}
+          }
+          return 'Step completed';
+        };
+        executeFlow(db, flow.id, chatFn).then(() => {
+          // Calculate next run
+          if (flow.schedule_cron) {
+            // Simple: parse interval in minutes
+            const mins = parseInt(flow.schedule_cron) || 60;
+            db.prepare("UPDATE flows SET status = 'scheduled', next_run = datetime('now', '+' || ? || ' minutes') WHERE id = ?").run(mins, flow.id);
+          }
+        }).catch(() => {});
+      }
+    } catch {}
+  }, 60000);
+
+  // Schedule API
+  app.post('/api/flows/:id/schedule', (req, res) => {
+    const { schedule, interval_minutes } = req.body;
+    db.prepare("UPDATE flows SET schedule = ?, schedule_cron = ?, status = 'scheduled', next_run = datetime('now', '+' || ? || ' minutes') WHERE id = ?")
+      .run(schedule, String(interval_minutes || 60), interval_minutes || 60, req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/flows/:id/schedule', (req, res) => {
+    db.prepare("UPDATE flows SET schedule = NULL, schedule_cron = NULL, next_run = NULL, status = 'backlog' WHERE id = ?").run(req.params.id);
     res.json({ ok: true });
   });
 

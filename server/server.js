@@ -735,8 +735,18 @@ app.post('/api/smol/chat', async (req, res) => {
         // Gestor - stream directly from HF API with real-time token output
         res.write('data: ' + JSON.stringify({ event: 'status', text: 'Gestor pensando...' }) + '\n\n');
 
+        // Search memory for relevant context
+        let memCtx = '';
+        try {
+          const { searchMemoryFiles } = await import('./memory-organizer.js');
+          const mems = searchMemoryFiles(message, 3);
+          if (mems.length > 0) {
+            memCtx = '\n\nConhecimento da memoria do sistema (use como base pra responder):\n' + mems.map(m => '- ' + m.title + ': ' + m.content.substring(0, 400)).join('\n');
+          }
+        } catch {}
+
         const HF_TOKEN = process.env.HF_TOKEN;
-        const systemPrompt = `Voce e o assistente do Agent OS, um sistema operacional de agentes IA da Hub Formaturas. Responda em portugues de forma clara e amigavel.\n\nO Agent OS tem: Browser, Terminal, SmolChat (chat IA), Agents (gestao), Supabase, GitHub, PM2 Manager, File Explorer.\nAgentes: Claude Code (programacao), SQL Agent (queries banco), Gestor (voce, duvidas gerais).`;
+        const systemPrompt = `Voce e o assistente do Agent OS, um sistema operacional de agentes IA da Hub Formaturas. Responda em portugues de forma clara e amigavel.\n\nO Agent OS tem: Browser, Terminal, SmolChat (chat IA), Agents (gestao), Supabase, GitHub, PM2 Manager, File Explorer.\nAgentes: Claude Code (programacao), SQL Agent (queries banco), Gestor (voce, duvidas gerais).` + memCtx;
 
         const hfResp = await fetch('https://router.huggingface.co/groq/openai/v1/chat/completions', {
           method: 'POST',

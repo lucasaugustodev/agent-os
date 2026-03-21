@@ -12,6 +12,7 @@
  */
 
 import { spawn } from 'child_process';
+import { searchMemoryFiles } from './memory-organizer.js';
 import { EventEmitter } from 'events';
 
 // ============ CONFIG ============
@@ -92,8 +93,17 @@ Rules:
 
 async function routeMessage(userMessage) {
   try {
+    // Search memory for relevant context
+    let memoryContext = '';
+    try {
+      const memories = searchMemoryFiles(userMessage, 3);
+      if (memories.length > 0) {
+        memoryContext = '\n\nRelevant knowledge from memory:\n' + memories.map(m => `- ${m.title}: ${m.content.substring(0, 200)}`).join('\n');
+      }
+    } catch {}
+
     const result = await askGestor([
-      { role: 'system', content: ROUTING_SYSTEM_PROMPT },
+      { role: 'system', content: ROUTING_SYSTEM_PROMPT + memoryContext },
       { role: 'user', content: userMessage },
     ], { maxTokens: 200, temperature: 0.1 });
 
@@ -206,6 +216,15 @@ async function executeLocalLLM(prompt) {
 
 // Execute direct response from gestor
 async function executeDirect(prompt, conversationHistory = []) {
+  // Search memory for context
+  let memoryContext = '';
+  try {
+    const memories = searchMemoryFiles(prompt, 3);
+    if (memories.length > 0) {
+      memoryContext = '\n\nConhecimento da memoria do sistema:\n' + memories.map(m => `- ${m.title}: ${m.content.substring(0, 300)}`).join('\n');
+    }
+  } catch {}
+
   const messages = [
     {
       role: 'system',

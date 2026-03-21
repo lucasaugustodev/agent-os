@@ -193,6 +193,72 @@ export function getVaultKeyValue(db, id) {
 
 // ============ API ROUTES ============
 
+
+
+// ============ MEMORY FILE ACCESS (for all agents) ============
+
+import { readdirSync, readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+const MEMORY_DIR = '/opt/agent-os/memory';
+
+export function searchMemoryFiles(query, limit = 5) {
+  if (!existsSync(MEMORY_DIR)) return [];
+  const files = readdirSync(MEMORY_DIR).filter(f => f.endsWith('.md'));
+  const results = [];
+  const q = query.toLowerCase();
+
+  for (const file of files) {
+    try {
+      const content = readFileSync(join(MEMORY_DIR, file), 'utf8');
+      const contentLower = content.toLowerCase();
+
+      // Score by keyword matches
+      const words = q.split(/\s+/);
+      let score = 0;
+      for (const word of words) {
+        if (word.length < 3) continue;
+        const matches = (contentLower.match(new RegExp(word, 'g')) || []).length;
+        score += matches;
+      }
+
+      if (score > 0) {
+        // Extract title from frontmatter
+        const titleMatch = content.match(/title:\s*(.+)/);
+        const title = titleMatch ? titleMatch[1].trim() : file.replace('.md', '');
+
+        results.push({ file, title, score, content: content.substring(0, 500) });
+      }
+    } catch {}
+  }
+
+  return results.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+export function getAllMemoryFiles() {
+  if (!existsSync(MEMORY_DIR)) return [];
+  return readdirSync(MEMORY_DIR)
+    .filter(f => f.endsWith('.md'))
+    .map(f => {
+      const content = readFileSync(join(MEMORY_DIR, f), 'utf8');
+      const titleMatch = content.match(/title:\s*(.+)/);
+      const typeMatch = content.match(/type:\s*(.+)/);
+      const tagsMatch = content.match(/tags:\s*\[([^\]]+)\]/);
+      return {
+        file: f,
+        title: titleMatch ? titleMatch[1].trim() : f.replace('.md', ''),
+        type: typeMatch ? typeMatch[1].trim() : 'note',
+        tags: tagsMatch ? tagsMatch[1].split(',').map(t => t.trim()) : [],
+      };
+    });
+}
+
+export async function writeMemoryFile(filename, content) {
+  const { writeFileSync } = await import('fs');
+  writeFileSync(join(MEMORY_DIR, filename), content, 'utf8');
+}
+
+
 export function createMemoryAPI(app, db) {
   // Knowledge
   app.get('/api/memory/knowledge', (req, res) => {
@@ -305,6 +371,36 @@ export function createMemoryAPI(app, db) {
     db.prepare('INSERT OR REPLACE INTO project_contexts (id, name, path, description, tech_stack, conventions) VALUES (?, ?, ?, ?, ?, ?)')
       .run(id, name, path, description, JSON.stringify(tech_stack || []), conventions);
     res.status(201).json({ ok: true });
+  });
+
+
+  // Memory files (markdown - accessible by all agents)
+  app.get('/api/memory/files', (_req, res) => {
+    res.json(getAllMemoryFiles());
+  });
+
+  app.get('/api/memory/search', (req, res) => {
+    const q = req.query.q;
+    if (!q) return res.status(400).json({ error: 'q parameter required' });
+
+    // Search both SQLite knowledge and markdown files
+    const dbResults = searchKnowledge(db, q);
+    const fileResults = searchMemoryFiles(q);
+
+    res.json({
+      knowledge: dbResults,
+      files: fileResults,
+    });
+  });
+
+  app.get('/api/memory/files/:filename', (req, res) => {
+    const filePath = join('/opt/agent-os/memory', req.params.filename);
+    try {
+      const content = readFileSync(filePath, 'utf8');
+      res.json({ filename: req.params.filename, content });
+    } catch {
+      res.status(404).json({ error: 'File not found' });
+    }
   });
 
   console.log('Memory API loaded');

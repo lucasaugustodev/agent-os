@@ -1,4 +1,5 @@
 import { createOrchestratorAPI } from "./orchestrator.js";
+import { createDatabaseAPI } from "./database.js";
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -825,7 +826,8 @@ app.use('/api/launcher', async (req, res) => {
 });
 // --- Orchestrator API ---
 const orchestrator = createOrchestratorAPI(app);
-console.log("Orchestrator loaded");
+createDatabaseAPI(app);
+console.log("Orchestrator + Database loaded");
 
 
 // --- SPA fallback ---

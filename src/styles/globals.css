@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* Inter font loaded via Google Fonts link in index.html */
+
+:root {
+  --os-desktop: #1e1e2e;
+  --os-window-bg: #313244;
+  --os-window-border: #45475a;
+  --os-titlebar: #181825;
+  --os-titlebar-text: #cdd6f4;
+  --os-titlebar-inactive: #6c7086;
+  --os-dock: rgba(24, 24, 37, 0.85);
+  --os-menubar: #11111b;
+  --os-accent: #89b4fa;
+  --os-accent-hover: #74c7ec;
+  --os-text: #cdd6f4;
+  --os-text-muted: #a6adc8;
+  --os-surface: #45475a;
+  --os-surface-hover: #585b70;
+  --os-green: #a6e3a1;
+  --os-red: #f38ba8;
+  --os-yellow: #f9e2af;
+  --os-peach: #fab387;
+  --os-mauve: #cba6f7;
+  --os-overlay: rgba(0, 0, 0, 0.5);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--os-text);
+  background: var(--os-desktop);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--os-surface-hover);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--os-text-muted);
+}

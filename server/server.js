@@ -578,13 +578,38 @@ app.post('/api/smol/chat', async (req, res) => {
         db.prepare('INSERT INTO thread_events (thread_id, type, agent_id, content, metadata) VALUES (?, ?, ?, ?, ?)').run(threadId, 'user_message', null, message, '{}');
       } catch (e) { console.error('Thread create error:', e.message); }
 
+      // Load thread context (previous messages for continuity)
+      let threadContext = '';
+      try {
+        const prevEvents = db.prepare(
+          "SELECT type, agent_id, content FROM thread_events WHERE thread_id = ? AND type IN ('user_message','agent_response','agent_summary') ORDER BY created_at DESC LIMIT 10"
+        ).all(threadId);
+        if (prevEvents.length > 1) {
+          const history = prevEvents.reverse().map(e => {
+            if (e.type === 'user_message') return 'User: ' + (e.content || '').substring(0, 200);
+            return (e.agent_id || 'Agent') + ': ' + (e.content || '').substring(0, 300);
+          }).join('\n');
+          threadContext = '\n\nContexto da thread (mensagens anteriores):\n' + history;
+        }
+      } catch {}
+
+      // Also load knowledge linked to this thread
+      try {
+        const threadKnowledge = db.prepare(
+          "SELECT title, content FROM knowledge WHERE thread_id = ? ORDER BY created_at DESC LIMIT 5"
+        ).all(threadId);
+        if (threadKnowledge.length > 0) {
+          threadContext += '\n\nConhecimento acumulado nesta thread:\n' + threadKnowledge.map(k => '- ' + k.title + ': ' + (k.content || '').substring(0, 200)).join('\n');
+        }
+      } catch {}
+
       // Step 1: Route via orchestrator
       res.write('data: ' + JSON.stringify({ event: 'status', text: 'Analisando...', threadId }) + '\n\n');
 
       const routeResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message: message + threadContext }),
       });
       const routing = await routeResp.json();
 
@@ -604,7 +629,7 @@ app.post('/api/smol/chat', async (req, res) => {
             body: JSON.stringify({
               model: 'llama-3.3-70b-versatile',
               messages: [
-                { role: 'system', content: 'Voce e o gestor do Agent OS. O usuario pediu uma tarefa de codigo. Responda em 1-2 frases curtas em portugues dizendo que vai encaminhar pro Claude Code e o que ele vai fazer. Seja direto e amigavel. Nao use emoji.' },
+                { role: 'system', content: 'Voce e o gestor do Agent OS. O usuario pediu uma tarefa de codigo. Responda em 1-2 frases curtas em portugues dizendo que vai encaminhar pro Claude Code e o que ele vai fazer. Seja direto e amigavel. Nao use emoji.' + threadContext },
                 { role: 'user', content: message },
               ],
               max_tokens: 100,
@@ -625,7 +650,8 @@ app.post('/api/smol/chat', async (req, res) => {
 
         res.write('data: ' + JSON.stringify({ event: 'status', text: 'Iniciando Claude Code...' }) + '\n\n');
 
-        const safePrompt = (routing.rewritten_prompt || message).replace(/'/g, "'\\''").replace(/"/g, '\\"').replace(/\$/g, '\\$');
+        const contextForClaude = threadContext ? '\n\nContexto da conversa anterior nesta thread:\n' + threadContext.substring(0, 1500) : '';
+        const safePrompt = ((routing.rewritten_prompt || message) + contextForClaude).replace(/'/g, "'\\''").replace(/"/g, '\\"').replace(/\$/g, '\\$');
         // Use 'acpx exec' which creates temp session automatically - no session management needed
         const shellCmd = `stdbuf -oL sudo -u claude bash -c 'cd /home/claude && stdbuf -oL acpx claude exec "${safePrompt}"' 2>&1`;
         const proc = spawn('bash', ['-c', shellCmd], { timeout: 180000, env: { ...process.env, PYTHONUNBUFFERED: '1' } });
@@ -747,7 +773,7 @@ app.post('/api/smol/chat', async (req, res) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: '<|im_start|>system\nYou are a command adapter. Output ONLY valid JSON. No explanation.<|im_end|>\n<|im_start|>user\n' + (routing.rewritten_prompt || message) + '<|im_end|>\n<|im_start|>assistant\n',
+            prompt: '<|im_start|>system\nYou are a command adapter. Output ONLY valid JSON. No explanation.<|im_end|>\n<|im_start|>user\n' + (routing.rewritten_prompt || message) + (threadContext ? '\nContext: ' + threadContext.substring(0, 500) : '') + '<|im_end|>\n<|im_start|>assistant\n',
             max_tokens: 200, temperature: 0.1, stop: ['<|im_end|>'],
           }),
         });
@@ -764,7 +790,7 @@ app.post('/api/smol/chat', async (req, res) => {
           const conv = db.prepare('INSERT INTO conversations (agent_id, session_id, title) VALUES (?, ?, ?)').run('sql', sessionId, message.substring(0, 80));
           db.prepare('INSERT INTO messages (conversation_id, role, content, agent_id, model_id) VALUES (?, ?, ?, ?, ?)').run(conv.lastInsertRowid, 'user', message, null, null);
           db.prepare('INSERT INTO messages (conversation_id, role, content, agent_id, model_id) VALUES (?, ?, ?, ?, ?)').run(conv.lastInsertRowid, 'assistant', sqlResult, 'sql', 'agent-os-1.5b');
-          organizeMessage(db, { content: message + '\n' + sqlResult }, conv.lastInsertRowid, 'sql').catch(() => {});
+          organizeMessage(db, { content: message + '\n' + sqlResult, threadId }, conv.lastInsertRowid, 'sql').catch(() => {});
         } catch {}
 
         res.write('data: ' + JSON.stringify({ event: 'done', result: sqlResult }) + '\n\n');
@@ -798,7 +824,7 @@ app.post('/api/smol/chat', async (req, res) => {
             model: 'llama-3.3-70b-versatile',
             messages: [
               { role: 'system', content: systemPrompt },
-              { role: 'user', content: routing.rewritten_prompt || message },
+              { role: 'user', content: (routing.rewritten_prompt || message) + threadContext },
             ],
             max_tokens: 1024,
             temperature: 0.7,
@@ -843,7 +869,7 @@ app.post('/api/smol/chat', async (req, res) => {
           db.prepare('INSERT INTO messages (conversation_id, role, content, agent_id, model_id) VALUES (?, ?, ?, ?, ?)').run(conv.lastInsertRowid, 'user', message, null, null);
           db.prepare('INSERT INTO messages (conversation_id, role, content, agent_id, model_id) VALUES (?, ?, ?, ?, ?)').run(conv.lastInsertRowid, 'assistant', fullResult, 'gestor', 'llama-3.3-70b');
           // Background: organize memory
-          organizeMessage(db, { content: message + '\n' + fullResult }, conv.lastInsertRowid, 'gestor').catch(() => {});
+          organizeMessage(db, { content: message + '\n' + fullResult, threadId }, conv.lastInsertRowid, 'gestor').catch(() => {});
         } catch {}
 
         res.write('data: ' + JSON.stringify({ event: 'done', result: fullResult || 'Sem resposta.' }) + '\n\n');

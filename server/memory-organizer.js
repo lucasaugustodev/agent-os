@@ -85,6 +85,7 @@ function detectErrors(text) {
 // ============ ORGANIZER ============
 
 export async function organizeMessage(db, message, conversationId, agentId) {
+  const threadId = message.threadId || null;
   const token = process.env.HF_TOKEN;
   if (!token) return;
 
@@ -164,6 +165,10 @@ Responda em portugues. Seja conciso e pratico.`,
         conversationId,
         'auto_detected'
       );
+      // Link to thread if we have threadId
+      try {
+        if (threadId) { try { db.prepare('UPDATE knowledge SET thread_id = ? WHERE id = (SELECT MAX(id) FROM knowledge)').run(threadId); } catch {} }
+      } catch {}
       console.log(`[KNOWLEDGE] Created: ${parsed.title} (${parsed.type})`);
     }
   } catch {}
@@ -260,6 +265,16 @@ export async function writeMemoryFile(filename, content) {
 
 
 export function createMemoryAPI(app, db) {
+  // Knowledge by thread
+  app.get('/api/memory/threads/:threadId/knowledge', (req, res) => {
+    try {
+      const k = db.prepare('SELECT * FROM knowledge WHERE thread_id = ? ORDER BY created_at DESC').all(req.params.threadId);
+      res.json(k);
+    } catch {
+      res.json([]);
+    }
+  });
+
   // Knowledge
   app.get('/api/memory/knowledge', (req, res) => {
     const q = req.query.q;

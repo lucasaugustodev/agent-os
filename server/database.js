@@ -279,6 +279,9 @@ CREATE TABLE IF NOT EXISTS thread_files (
 );
 `);
 
+
+try { db.exec('ALTER TABLE knowledge ADD COLUMN thread_id TEXT'); } catch {}
+
 // ============ SEED DEFAULTS ============
 
 const seedProviders = db.prepare(`INSERT OR IGNORE INTO providers (id, name, auth_type, cli_command, install_command) VALUES (?, ?, ?, ?, ?)`);

@@ -103,11 +103,11 @@ function Threads(){
   const typeColor=(t)=>({user_message:'rgba(0,229,204,0.15)',routing:'rgba(147,130,255,0.12)',tool_call:'rgba(255,184,77,0.15)',error:'rgba(255,77,77,0.15)'}[t]||'rgba(255,255,255,0.04)');
 
   const c=(0,t())
-  return c.jsxs('div',{style:{display:'flex',height:'100%',background:'#0a0e17',color:'#e0e0e0',fontFamily:'Inter,sans-serif'},children:[
+  return c.jsxs('div',{className:'flex h-full',style:{background:'#0a0e17',overflow:'hidden',color:'#e0e0e0',fontFamily:'Inter,sans-serif'},children:[
     // Left panel - thread list
-    c.jsxs('div',{style:{width:'280px',borderRight:'1px solid rgba(255,255,255,0.06)',display:'flex',flexDirection:'column'},children:[
+    c.jsxs('div',{className:'flex flex-col',style:{width:'280px',minHeight:0,borderRight:'1px solid rgba(255,255,255,0.06)'},children:[
       c.jsx('div',{style:{padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.06)',fontSize:'13px',fontWeight:600,color:'var(--os-accent,#00e5cc)'},children:'Threads'}),
-      c.jsx('div',{style:{flex:1,overflowY:'auto'},children:
+      c.jsx('div',{style:{overflowY:'auto',maxHeight:'450px'},children:
         loading?c.jsx('div',{style:{padding:'20px',textAlign:'center',color:'#666',fontSize:'12px'},children:'Carregando...'}):
         threads.length===0?c.jsx('div',{style:{padding:'20px',textAlign:'center',color:'#666',fontSize:'12px'},children:'Nenhuma thread ainda. Mande algo no Agent OS.'}):
         threads.map(t=>c.jsxs('div',{
@@ -130,16 +130,16 @@ function Threads(){
       })
     ]}),
     // Right panel
-    c.jsx('div',{style:{flex:1,display:'flex',flexDirection:'column'},children:
+    c.jsx('div',{className:'flex-1 flex flex-col min-h-0 overflow-hidden',children:
       !selected?
         c.jsxs('div',{style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',color:'#555'},children:[
           c.jsx('div',{style:{fontSize:'32px',marginBottom:'8px'},children:'📋'}),
           c.jsx('div',{style:{fontSize:'13px'},children:'Selecione uma thread'}),
           c.jsx('div',{style:{fontSize:'11px',color:'#444',marginTop:'4px'},children:'para ver o historico ou continuar a conversa'})
         ]}):
-        c.jsxs('div',{style:{flex:1,display:'flex',flexDirection:'column'},children:[
+        c.jsxs('div',{className:'flex-1 flex flex-col min-h-0',children:[
           // Thread header with tabs
-          c.jsxs('div',{style:{padding:'10px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'},children:[
+          c.jsxs('div',{style:{padding:'10px 20px',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0,display:'flex',justifyContent:'space-between',alignItems:'center'},children:[
             c.jsxs('div',{children:[
               c.jsx('div',{style:{fontSize:'13px',fontWeight:600},children:threads.find(t=>t.id===selected)?.title||'Thread'}),
               c.jsxs('div',{style:{fontSize:'10px',color:'#888',marginTop:'2px'},children:[threads.find(t=>t.id===selected)?.primary_agent_id||'',' · ',events.length,' eventos']})
@@ -152,8 +152,8 @@ function Threads(){
           // Content area
           chatMode?
             // CHAT MODE - clean messages + input
-            c.jsxs('div',{style:{flex:1,display:'flex',flexDirection:'column'},children:[
-              c.jsx('div',{ref:scrollRef,style:{flex:1,overflowY:'auto',padding:'16px 20px'},children:
+            c.jsxs('div',{className:'flex-1 flex flex-col min-h-0',children:[
+              c.jsx('div',{ref:scrollRef,className:'overflow-y-auto',style:{padding:'16px 20px',maxHeight:'300px'},children:
                 chatMessages.map((msg,i)=>c.jsx('div',{key:i,style:{display:'flex',justifyContent:msg.role==='user'?'flex-end':'flex-start',marginBottom:'10px'},children:
                   c.jsxs('div',{style:{maxWidth:'75%',padding:'10px 14px',borderRadius:'16px',borderBottomRightRadius:msg.role==='user'?'4px':undefined,borderBottomLeftRadius:msg.role!=='user'?'4px':undefined,background:msg.role==='user'?'rgba(0,229,204,0.12)':msg.role==='system'?'rgba(255,184,77,0.1)':'rgba(255,255,255,0.04)'},children:[
                     msg.role!=='user'&&c.jsx('div',{style:{fontSize:'10px',color:'#00e5cc',marginBottom:'4px',fontWeight:500},children:msg.agent||'Agent'}),
@@ -170,7 +170,7 @@ function Threads(){
                 ]})
               }),
               // Input area with agent selector
-              c.jsxs('div',{style:{padding:'10px 16px',borderTop:'1px solid rgba(255,255,255,0.06)',display:'flex',flexDirection:'column',gap:'6px'},children:[
+              c.jsxs('div',{style:{padding:'10px 16px',borderTop:'1px solid rgba(255,255,255,0.06)',display:'flex',flexDirection:'column',gap:'6px',flexShrink:0},children:[
                 // Agent selector
                 c.jsxs('div',{style:{display:'flex',gap:'4px',flexWrap:'wrap'},children:[
                   c.jsx('button',{onClick:()=>setSelectedAgent('auto'),style:{padding:'2px 8px',borderRadius:'10px',border:'1px solid '+(selectedAgent==='auto'?'#00e5cc':'rgba(255,255,255,0.1)'),background:selectedAgent==='auto'?'rgba(0,229,204,0.12)':'transparent',color:selectedAgent==='auto'?'#00e5cc':'#888',fontSize:'10px',cursor:'pointer'},children:'Auto'}),
@@ -184,7 +184,7 @@ function Threads(){
               ]})
             ]}):
             // TIMELINE MODE - all events with details
-            c.jsx('div',{style:{flex:1,overflowY:'auto',padding:'16px 20px'},children:
+            c.jsx('div',{className:'overflow-y-auto',style:{padding:'16px 20px',maxHeight:'300px'},children:
               events.length===0?
                 c.jsx('div',{style:{textAlign:'center',color:'#555',fontSize:'12px',padding:'20px'},children:'Sem eventos'}):
                 c.jsxs('div',{children:[

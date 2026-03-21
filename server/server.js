@@ -575,14 +575,40 @@ app.post('/api/smol/chat', async (req, res) => {
 
       // Step 2: Execute based on agent type
       if (routing.agent === 'claude') {
-        // Stream Claude Code via ACPX in real-time
+        // Stream Claude Code via ACPX exec (no persistent session needed)
         const { spawn } = await import('child_process');
-        const acpxSession = 'agentOS-' + sessionId;
-        // Use shell to combine stdout+stderr and ensure sudo works with pipes
-        const shellCmd = `sudo -u claude bash -c 'cd /home/claude && acpx claude -s ${acpxSession} "${(routing.rewritten_prompt || message).replace(/'/g, "'\\''").replace(/"/g, '\\"')}"' 2>&1`;
-        const proc = spawn('bash', ['-c', shellCmd], { timeout: 120000 });
+
+        res.write('data: ' + JSON.stringify({ event: 'status', text: 'Iniciando Claude Code...' }) + '\n\n');
+
+        const safePrompt = (routing.rewritten_prompt || message).replace(/'/g, "'\\''").replace(/"/g, '\\"').replace(/\$/g, '\\$');
+        // Use 'acpx exec' which creates temp session automatically - no session management needed
+        const shellCmd = `stdbuf -oL sudo -u claude bash -c 'cd /home/claude && stdbuf -oL acpx claude exec "${safePrompt}"' 2>&1`;
+        const proc = spawn('bash', ['-c', shellCmd], { timeout: 180000, env: { ...process.env, PYTHONUNBUFFERED: '1' } });
 
         let fullResult = '';
+        let lastStatus = 'Iniciando Claude Code...';
+        let statusCount = 0;
+        const statusMessages = [
+          'Claude inicializando...',
+          'Claude conectando...',
+          'Claude analisando...',
+          'Claude pensando...',
+          'Claude escrevendo codigo...',
+          'Claude criando arquivos...',
+          'Claude ainda trabalhando...',
+          'Quase pronto...',
+        ];
+
+        // Heartbeat: send status every 3s
+        const heartbeat = setInterval(() => {
+          if (statusCount < statusMessages.length) {
+            lastStatus = statusMessages[statusCount];
+          }
+          statusCount++;
+          try {
+            res.write('data: ' + JSON.stringify({ event: 'status', text: lastStatus }) + '\n\n');
+          } catch {}
+        }, 3000);
 
         proc.stdout.on('data', (data) => {
           const text = data.toString();
@@ -591,42 +617,42 @@ app.post('/api/smol/chat', async (req, res) => {
           for (const line of lines) {
             const t = line.trim();
             if (!t) continue;
-            // Status updates
             if (t.includes('initialize') || t.includes('session/new')) {
-              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Conectando ao Claude...' }) + '\n\n');
-            } else if (t.includes('session/load')) {
-              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Retomando sessao...' }) + '\n\n');
+              lastStatus = 'Conectando ao Claude...';
             } else if (t.startsWith('[thinking]')) {
-              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Pensando...' }) + '\n\n');
-            } else if (t.startsWith('[error]') && t.includes('Resource not found')) {
-              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Criando sessao nova...' }) + '\n\n');
-            } else if (t.startsWith('[done]')) {
-              // ignore
-            } else if (t.startsWith('[acpx]') || t.startsWith('[client]')) {
-              // ignore framework messages
-            } else {
-              // Real content from Claude
-              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Claude respondendo...' }) + '\n\n');
+              lastStatus = 'Claude pensando...';
+            } else if (t.includes('tool_use') || t.includes('[tool]')) {
+              lastStatus = 'Claude usando ferramentas...';
+            } else if (!t.startsWith('[') && !t.startsWith('⚠')) {
+              lastStatus = 'Claude respondendo...';
             }
+            try {
+              res.write('data: ' + JSON.stringify({ event: 'status', text: lastStatus }) + '\n\n');
+            } catch {}
           }
         });
 
         proc.on('close', (code) => {
-          // Clean result: remove ACPX framework lines
+          clearInterval(heartbeat);
           const resultLines = fullResult.split('\n').filter(l => {
             const t = l.trim();
-            return t && !t.startsWith('[acpx]') && !t.startsWith('[client]') && !t.startsWith('[error]') && !t.startsWith('[done]') && !t.startsWith('[thinking]');
+            return t && !t.startsWith('[acpx]') && !t.startsWith('[client]') && !t.startsWith('[error]') && !t.startsWith('[done]') && !t.startsWith('[thinking]') && !t.startsWith('⚠');
           });
-          const cleanResult = resultLines.join('\n').trim() || 'Tarefa processada pelo Claude.';
-          res.write('data: ' + JSON.stringify({ event: 'done', result: cleanResult }) + '\n\n');
-          res.write('data: [DONE]\n\n');
-          res.end();
+          const cleanResult = resultLines.join('\n').trim() || 'Claude processou a tarefa.';
+          try {
+            res.write('data: ' + JSON.stringify({ event: 'done', result: cleanResult }) + '\n\n');
+            res.write('data: [DONE]\n\n');
+            res.end();
+          } catch {}
         });
 
         proc.on('error', (err) => {
-          res.write('data: ' + JSON.stringify({ event: 'done', result: 'Erro: ' + err.message }) + '\n\n');
-          res.write('data: [DONE]\n\n');
-          res.end();
+          clearInterval(heartbeat);
+          try {
+            res.write('data: ' + JSON.stringify({ event: 'done', result: 'Erro: ' + err.message }) + '\n\n');
+            res.write('data: [DONE]\n\n');
+            res.end();
+          } catch {}
         });
 
       } else if (routing.agent === 'sql') {

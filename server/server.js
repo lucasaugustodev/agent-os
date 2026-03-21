@@ -654,20 +654,46 @@ app.post('/api/smol/chat', async (req, res) => {
           }
         });
 
-        proc.on('close', (code) => {
+        proc.on('close', async (code) => {
           clearInterval(heartbeat);
           const resultLines = fullResult.split('\n').filter(l => {
             const t = l.trim();
-            return t && !t.startsWith('[acpx]') && !t.startsWith('[client]') && !t.startsWith('[error]') && !t.startsWith('[done]') && !t.startsWith('[thinking]') && !t.startsWith('⚠');
+            return t && !t.startsWith('[acpx]') && !t.startsWith('[client]') && !t.startsWith('[error]') && !t.startsWith('[done]') && !t.startsWith('[thinking]') && !t.startsWith('\u26a0');
           });
           const cleanResult = resultLines.join('\n').trim() || 'Claude processou a tarefa.';
+
+          // Llama summarizes what Claude did
+          let finalMsg = cleanResult;
           try {
-            res.write('data: ' + JSON.stringify({ event: 'done', result: cleanResult }) + '\n\n');
+            res.write('data: ' + JSON.stringify({ event: 'status', text: 'Preparando resumo...' }) + '\n\n');
+            const HF_T = process.env.HF_TOKEN;
+            const sr = await fetch('https://router.huggingface.co/groq/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + HF_T, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'llama-3.3-70b-versatile',
+                messages: [
+                  { role: 'system', content: 'Voce e o gestor do Agent OS. O Claude Code acabou de executar uma tarefa. Faca um resumo curto e amigavel em portugues do que foi feito (2-3 frases). Se criou arquivos, mencione o caminho. Depois do resumo, coloque uma linha em branco e inclua os detalhes tecnicos relevantes.' },
+                  { role: 'user', content: 'Pedido: ' + message + '\n\nResultado do Claude:\n' + cleanResult.substring(0, 2000) },
+                ],
+                max_tokens: 400,
+                temperature: 0.5,
+              }),
+            });
+            const sd = await sr.json();
+            if (sd.choices?.[0]?.message?.content) {
+              finalMsg = sd.choices[0].message.content;
+            }
+          } catch (e) {
+            // fallback to raw result
+          }
+
+          try {
+            res.write('data: ' + JSON.stringify({ event: 'done', result: finalMsg }) + '\n\n');
             res.write('data: [DONE]\n\n');
             res.end();
           } catch {}
         });
-
         proc.on('error', (err) => {
           clearInterval(heartbeat);
           try {

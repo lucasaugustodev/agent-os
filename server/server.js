@@ -3,6 +3,7 @@ import { createOrchestratorAPI } from "./orchestrator.js";
 import { createDatabaseAPI } from "./database.js";
 import db from "./database.js";
 import { createMemoryAPI, organizeMessage } from "./memory-organizer.js";
+import { createFlowAPI } from "./flow-engine.js";
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -929,7 +930,8 @@ app.use('/api/launcher', async (req, res) => {
 const orchestrator = createOrchestratorAPI(app);
 createDatabaseAPI(app);
 createMemoryAPI(app, db);
-console.log("Orchestrator + Database + Memory loaded");
+createFlowAPI(app, db);
+console.log("Orchestrator + Database + Memory + Flows loaded");
 
 
 // --- SPA fallback ---

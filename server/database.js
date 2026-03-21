@@ -4,6 +4,7 @@
  */
 
 import Database from 'better-sqlite3';
+import crypto from 'crypto';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
@@ -239,6 +240,43 @@ CREATE TABLE IF NOT EXISTS knowledge (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS threads (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  status TEXT DEFAULT 'active',
+  created_by TEXT DEFAULT 'user',
+  primary_agent_id TEXT,
+  project_id TEXT,
+  tags TEXT DEFAULT '[]',
+  summary TEXT,
+  file_count INTEGER DEFAULT 0,
+  event_count INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS thread_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT REFERENCES threads(id),
+  type TEXT NOT NULL,
+  agent_id TEXT,
+  content TEXT,
+  metadata TEXT DEFAULT '{}',
+  duration_ms INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS thread_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT REFERENCES threads(id),
+  event_id INTEGER REFERENCES thread_events(id),
+  file_path TEXT NOT NULL,
+  action TEXT,
+  size_bytes INTEGER,
+  diff_lines INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `);
 
 // ============ SEED DEFAULTS ============
@@ -272,6 +310,24 @@ seedAgent.run('sql', 'SQL Agent', 'Queries SQL, Supabase, information_schema', '
 // ============ QUERY HELPERS ============
 
 export const queries = {
+
+  // Threads
+  getThreads: db.prepare('SELECT * FROM threads ORDER BY updated_at DESC LIMIT ?'),
+  getActiveThreads: db.prepare('SELECT * FROM threads WHERE status = ? ORDER BY updated_at DESC LIMIT ?'),
+  getThread: db.prepare('SELECT * FROM threads WHERE id = ?'),
+  createThread: db.prepare('INSERT INTO threads (id, title, primary_agent_id) VALUES (?, ?, ?)'),
+  updateThread: db.prepare('UPDATE threads SET title = ?, status = ?, summary = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+  updateThreadCounts: db.prepare('UPDATE threads SET event_count = (SELECT COUNT(*) FROM thread_events WHERE thread_id = ?), file_count = (SELECT COUNT(*) FROM thread_files WHERE thread_id = ?), updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
+
+  // Thread Events
+  getThreadEvents: db.prepare('SELECT * FROM thread_events WHERE thread_id = ? ORDER BY created_at ASC'),
+  getThreadEventsPaged: db.prepare('SELECT * FROM thread_events WHERE thread_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?'),
+  insertThreadEvent: db.prepare('INSERT INTO thread_events (thread_id, type, agent_id, content, metadata, duration_ms) VALUES (?, ?, ?, ?, ?, ?)'),
+
+  // Thread Files
+  getThreadFiles: db.prepare('SELECT * FROM thread_files WHERE thread_id = ? ORDER BY created_at DESC'),
+  insertThreadFile: db.prepare('INSERT INTO thread_files (thread_id, event_id, file_path, action, size_bytes, diff_lines) VALUES (?, ?, ?, ?, ?, ?)'),
+
   // Providers
   getProviders: db.prepare(`SELECT * FROM providers ORDER BY name`),
   getProvider: db.prepare(`SELECT * FROM providers WHERE id = ?`),
@@ -478,6 +534,76 @@ export function createDatabaseAPI(app) {
     const info = queries.insertMessage.run(req.params.id, role, content, agent_id, model_id, JSON.stringify(routing), tokens_input, tokens_output, duration_ms);
     res.status(201).json({ id: info.lastInsertRowid });
   });
+
+
+  // --- Threads ---
+  app.get('/api/threads', (req, res) => {
+    const limit = parseInt(req.query.limit) || 50;
+    const status = req.query.status;
+    if (status) {
+      res.json(queries.getActiveThreads.all(status, limit));
+    } else {
+      res.json(queries.getThreads.all(limit));
+    }
+  });
+
+  app.get('/api/threads/:id', (req, res) => {
+    const t = queries.getThread.get(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Thread not found' });
+    res.json(t);
+  });
+
+  app.post('/api/threads', (req, res) => {
+    const { id, title, primary_agent_id } = req.body;
+    const threadId = id || crypto.randomUUID();
+    queries.createThread.run(threadId, title || 'New Thread', primary_agent_id || null);
+    res.status(201).json({ id: threadId });
+  });
+
+  app.patch('/api/threads/:id', (req, res) => {
+    const { title, status, summary } = req.body;
+    const t = queries.getThread.get(req.params.id);
+    if (!t) return res.status(404).json({ error: 'Thread not found' });
+    queries.updateThread.run(title || t.title, status || t.status, summary || t.summary, req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.get('/api/threads/:id/events', (req, res) => {
+    const limit = parseInt(req.query.limit) || 500;
+    const offset = parseInt(req.query.offset) || 0;
+    res.json(queries.getThreadEventsPaged.all(req.params.id, limit, offset));
+  });
+
+  app.post('/api/threads/:id/events', (req, res) => {
+    const { type, agent_id, content, metadata, duration_ms } = req.body;
+    const info = queries.insertThreadEvent.run(req.params.id, type, agent_id, content, JSON.stringify(metadata || {}), duration_ms);
+    // Update counts
+    queries.updateThreadCounts.run(req.params.id, req.params.id, req.params.id);
+    res.status(201).json({ id: info.lastInsertRowid });
+  });
+
+  app.get('/api/threads/:id/files', (req, res) => {
+    res.json(queries.getThreadFiles.all(req.params.id));
+  });
+
+  app.post('/api/threads/:id/files', (req, res) => {
+    const { event_id, file_path, action, size_bytes, diff_lines } = req.body;
+    const info = queries.insertThreadFile.run(req.params.id, event_id, file_path, action, size_bytes, diff_lines);
+    queries.updateThreadCounts.run(req.params.id, req.params.id, req.params.id);
+    res.status(201).json({ id: info.lastInsertRowid });
+  });
+
+  // Thread message (user continues conversation in thread)
+  app.post('/api/threads/:id/message', async (req, res) => {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'message required' });
+    // Save user message event
+    queries.insertThreadEvent.run(req.params.id, 'user_message', null, message, '{}', null);
+    queries.updateThreadCounts.run(req.params.id, req.params.id, req.params.id);
+    // Proxy to orchestrator chat with thread context
+    res.json({ ok: true, thread_id: req.params.id });
+  });
+
 
   console.log(`Database ready: ${DB_PATH}`);
 }

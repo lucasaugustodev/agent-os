@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { createOrchestratorAPI } from "./orchestrator.js";
 import { createDatabaseAPI } from "./database.js";
 import db from "./database.js";
@@ -564,8 +565,21 @@ app.post('/api/smol/chat', async (req, res) => {
       res.setHeader('X-Accel-Buffering', 'no');
       res.flushHeaders();
 
+      // Create thread for this interaction
+      const threadId = req.body.threadId || crypto.randomUUID();
+      let isNewThread = false;
+      try {
+        const existing = db.prepare('SELECT id FROM threads WHERE id = ?').get(threadId);
+        if (!existing) {
+          db.prepare('INSERT INTO threads (id, title, status) VALUES (?, ?, ?)').run(threadId, message.substring(0, 80), 'active');
+          isNewThread = true;
+        }
+        // Log user message
+        db.prepare('INSERT INTO thread_events (thread_id, type, agent_id, content, metadata) VALUES (?, ?, ?, ?, ?)').run(threadId, 'user_message', null, message, '{}');
+      } catch (e) { console.error('Thread create error:', e.message); }
+
       // Step 1: Route via orchestrator
-      res.write('data: ' + JSON.stringify({ event: 'status', text: 'Analisando...' }) + '\n\n');
+      res.write('data: ' + JSON.stringify({ event: 'status', text: 'Analisando...', threadId }) + '\n\n');
 
       const routeResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/route', {
         method: 'POST',
@@ -573,6 +587,11 @@ app.post('/api/smol/chat', async (req, res) => {
         body: JSON.stringify({ message }),
       });
       const routing = await routeResp.json();
+
+      // Log routing decision
+      try {
+        db.prepare('INSERT INTO thread_events (thread_id, type, agent_id, content, metadata) VALUES (?, ?, ?, ?, ?)').run(threadId, 'routing', 'gestor', routing.agent, JSON.stringify(routing));
+      } catch {}
 
       // Step 2: Execute based on agent type
       if (routing.agent === 'claude') {
@@ -596,6 +615,7 @@ app.post('/api/smol/chat', async (req, res) => {
           const preMsg = preData.choices?.[0]?.message?.content || 'Encaminhando para o Claude Code...';
           // Send Llama's intro as a partial message
           res.write('data: ' + JSON.stringify({ event: 'status', text: preMsg }) + '\n\n');
+          try { db.prepare('INSERT INTO thread_events (thread_id, type, agent_id, content) VALUES (?, ?, ?, ?)').run(threadId, 'agent_intro', 'gestor', preMsg); } catch {}
         } catch {
           res.write('data: ' + JSON.stringify({ event: 'status', text: 'Encaminhando para o Claude Code...' }) + '\n\n');
         }
@@ -659,6 +679,20 @@ app.post('/api/smol/chat', async (req, res) => {
 
         proc.on('close', async (code) => {
           clearInterval(heartbeat);
+          // Parse and log tool calls from ACPX output
+          const toolLines = fullResult.split('\n').filter(l => l.trim().startsWith('[tool]'));
+          for (const tl of toolLines) {
+            try {
+              db.prepare('INSERT INTO thread_events (thread_id, type, agent_id, content, metadata) VALUES (?, ?, ?, ?, ?)').run(threadId, 'tool_call', 'coder', tl.trim(), '{}');
+              // Detect file operations
+              const fileMatch = tl.match(/Write\s+(\S+)\s+\(completed\)/);
+              if (fileMatch) {
+                const diffMatch = fullResult.match(new RegExp('diff\\s+' + fileMatch[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+\\(([^)]+)\\)'));
+                db.prepare('INSERT INTO thread_files (thread_id, file_path, action, diff_lines) VALUES (?, ?, ?, ?)').run(threadId, fileMatch[1], 'created', parseInt(diffMatch?.[1]) || 0);
+              }
+            } catch {}
+          }
+
           const resultLines = fullResult.split('\n').filter(l => {
             const t = l.trim();
             return t && !t.startsWith('[acpx]') && !t.startsWith('[client]') && !t.startsWith('[error]') && !t.startsWith('[done]') && !t.startsWith('[thinking]') && !t.startsWith('\u26a0');
@@ -719,6 +753,12 @@ app.post('/api/smol/chat', async (req, res) => {
         });
         const sqlData = await sqlResp.json();
         const sqlResult = sqlData.choices[0].text.trim();
+        // Log to thread
+        try {
+          db.prepare('INSERT INTO thread_events (thread_id, type, agent_id, content) VALUES (?, ?, ?, ?)').run(threadId, 'agent_response', 'sql', sqlResult);
+          db.prepare('UPDATE threads SET event_count = (SELECT COUNT(*) FROM thread_events WHERE thread_id = ?), primary_agent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(threadId, 'sql', threadId);
+        } catch {}
+
         // Auto-save
         try {
           const conv = db.prepare('INSERT INTO conversations (agent_id, session_id, title) VALUES (?, ?, ?)').run('sql', sessionId, message.substring(0, 80));
@@ -790,6 +830,12 @@ app.post('/api/smol/chat', async (req, res) => {
             } catch {}
           }
         }
+
+        // Log to thread
+        try {
+          db.prepare('INSERT INTO thread_events (thread_id, type, agent_id, content) VALUES (?, ?, ?, ?)').run(threadId, 'agent_response', 'gestor', fullResult.substring(0, 2000));
+          db.prepare('UPDATE threads SET event_count = (SELECT COUNT(*) FROM thread_events WHERE thread_id = ?), primary_agent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(threadId, 'gestor', threadId);
+        } catch {}
 
         // Auto-save to database
         try {

@@ -547,7 +547,7 @@ app.get('/api/github/notifications', async (_req, res) => {
 
 // --- SmolAgent daemon proxy ---
 app.post('/api/smol/chat', async (req, res) => {
-  // Route through orchestrator - classifies intent and sends to correct agent
+  // Route through orchestrator with real-time streaming
   try {
     const { message, stream } = req.body;
     if (!message) return res.status(400).json({ error: 'message required' });
@@ -560,33 +560,104 @@ app.post('/api/smol/chat', async (req, res) => {
       res.setHeader('Connection', 'keep-alive');
 
       // Step 1: Route via orchestrator
+      res.write('data: ' + JSON.stringify({ event: 'status', text: 'Analisando...' }) + '\n\n');
+
       const routeResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
       });
       const routing = await routeResp.json();
+      const agentLabel = routing.agent === 'sql' ? 'SQL Agent (1.5B)' : routing.agent === 'claude' ? 'Claude Code' : 'Gestor';
+      res.write('data: ' + JSON.stringify({ event: 'status', text: agentLabel + '...' }) + '\n\n');
 
-      // Send routing status
-      res.write('data: ' + JSON.stringify({ event: 'status', text: 'Roteando para ' + (routing.agent === 'sql' ? 'SQL Agent (1.5B local)' : routing.agent === 'claude' ? 'Claude Code' : 'Gestor (Llama 70B)') + '...' }) + '\n\n');
+      // Step 2: Execute based on agent type
+      if (routing.agent === 'claude') {
+        // Stream Claude Code via ACPX in real-time
+        const { spawn } = await import('child_process');
+        const acpxSession = 'agentOS-' + sessionId;
+        // Use shell to combine stdout+stderr and ensure sudo works with pipes
+        const shellCmd = `sudo -u claude bash -c 'cd /home/claude && acpx claude -s ${acpxSession} "${(routing.rewritten_prompt || message).replace(/'/g, "'\\''").replace(/"/g, '\\"')}"' 2>&1`;
+        const proc = spawn('bash', ['-c', shellCmd], { timeout: 120000 });
 
-      // Step 2: Execute via orchestrator
-      const chatResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, message }),
-      });
-      const result = await chatResp.json();
+        let fullResult = '';
 
-      // Send agent info
-      res.write('data: ' + JSON.stringify({ event: 'status', text: result.agentName + ' respondendo...' }) + '\n\n');
+        proc.stdout.on('data', (data) => {
+          const text = data.toString();
+          fullResult += text;
+          const lines = text.split('\n');
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t) continue;
+            // Status updates
+            if (t.includes('initialize') || t.includes('session/new')) {
+              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Conectando ao Claude...' }) + '\n\n');
+            } else if (t.includes('session/load')) {
+              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Retomando sessao...' }) + '\n\n');
+            } else if (t.startsWith('[thinking]')) {
+              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Pensando...' }) + '\n\n');
+            } else if (t.startsWith('[error]') && t.includes('Resource not found')) {
+              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Criando sessao nova...' }) + '\n\n');
+            } else if (t.startsWith('[done]')) {
+              // ignore
+            } else if (t.startsWith('[acpx]') || t.startsWith('[client]')) {
+              // ignore framework messages
+            } else {
+              // Real content from Claude
+              res.write('data: ' + JSON.stringify({ event: 'status', text: 'Claude respondendo...' }) + '\n\n');
+            }
+          }
+        });
 
-      // Send result
-      res.write('data: ' + JSON.stringify({ event: 'done', result: result.result }) + '\n\n');
-      res.write('data: [DONE]\n\n');
-      res.end();
+        proc.on('close', (code) => {
+          // Clean result: remove ACPX framework lines
+          const resultLines = fullResult.split('\n').filter(l => {
+            const t = l.trim();
+            return t && !t.startsWith('[acpx]') && !t.startsWith('[client]') && !t.startsWith('[error]') && !t.startsWith('[done]') && !t.startsWith('[thinking]');
+          });
+          const cleanResult = resultLines.join('\n').trim() || 'Tarefa processada pelo Claude.';
+          res.write('data: ' + JSON.stringify({ event: 'done', result: cleanResult }) + '\n\n');
+          res.write('data: [DONE]\n\n');
+          res.end();
+        });
+
+        proc.on('error', (err) => {
+          res.write('data: ' + JSON.stringify({ event: 'done', result: 'Erro: ' + err.message }) + '\n\n');
+          res.write('data: [DONE]\n\n');
+          res.end();
+        });
+
+      } else if (routing.agent === 'sql') {
+        // SQL Agent - fast, no streaming needed
+        res.write('data: ' + JSON.stringify({ event: 'status', text: 'Consultando modelo SQL...' }) + '\n\n');
+        const sqlResp = await fetch('http://127.0.0.1:8080/v1/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: '<|im_start|>system\nYou are a command adapter. Output ONLY valid JSON. No explanation.<|im_end|>\n<|im_start|>user\n' + (routing.rewritten_prompt || message) + '<|im_end|>\n<|im_start|>assistant\n',
+            max_tokens: 200, temperature: 0.1, stop: ['<|im_end|>'],
+          }),
+        });
+        const sqlData = await sqlResp.json();
+        const sqlResult = sqlData.choices[0].text.trim();
+        res.write('data: ' + JSON.stringify({ event: 'done', result: sqlResult }) + '\n\n');
+        res.write('data: [DONE]\n\n');
+        res.end();
+
+      } else {
+        // Gestor - stream via HF API
+        res.write('data: ' + JSON.stringify({ event: 'status', text: 'Gestor pensando...' }) + '\n\n');
+        const chatResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, message }),
+        });
+        const result = await chatResp.json();
+        res.write('data: ' + JSON.stringify({ event: 'done', result: result.result }) + '\n\n');
+        res.write('data: [DONE]\n\n');
+        res.end();
+      }
     } else {
-      // Non-streaming: just proxy to orchestrator
       const chatResp = await fetch('http://127.0.0.1:' + PORT + '/api/orchestrator/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -600,6 +671,7 @@ app.post('/api/smol/chat', async (req, res) => {
       res.status(502).json({ error: 'Orchestrator unavailable', detail: err.message });
     } else {
       res.write('data: ' + JSON.stringify({ event: 'done', result: 'Erro: ' + err.message }) + '\n\n');
+      res.write('data: [DONE]\n\n');
       res.end();
     }
   }

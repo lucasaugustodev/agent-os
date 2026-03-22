@@ -47,7 +47,6 @@ export default function SmolChatApp(_props: AppComponentProps) {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let fullContent = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -62,39 +61,39 @@ export default function SmolChatApp(_props: AppComponentProps) {
           if (!raw || raw === '[DONE]') continue;
           try {
             const evt = JSON.parse(raw);
-            if (evt.type === 'status') {
+            // SSE format from backend: {event, text?, result?, threadId?}
+            const evtType: string = evt.event ?? evt.type ?? '';
+
+            if (evtType === 'status') {
               setStatusText(evt.text ?? 'Processando...');
-            } else if (evt.type === 'tool_call') {
+            } else if (evtType === 'tool_call') {
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
-                    ? { ...m, toolCalls: [...(m.toolCalls ?? []), evt.name ?? 'tool'] }
+                    ? { ...m, toolCalls: [...(m.toolCalls ?? []), evt.name ?? evt.tool ?? 'tool'] }
                     : m
                 )
               );
-            } else if (evt.type === 'delta' || evt.type === 'content') {
-              fullContent += evt.delta ?? evt.content ?? '';
-              const cap = fullContent;
+            } else if (evtType === 'delta' || evtType === 'content') {
+              const chunk: string = evt.delta ?? evt.content ?? '';
               setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: cap } : m))
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, content: m.content + chunk } : m
+                )
               );
-            } else if (evt.type === 'done' || evt.type === 'finish') {
-              if (evt.content) {
-                fullContent = evt.content;
-                const cap = fullContent;
+            } else if (evtType === 'done' || evtType === 'finish' || evtType === 'result') {
+              // Backend sends {event:"done", result:"..."} as final event
+              const finalContent: string = evt.result ?? evt.content ?? '';
+              if (finalContent) {
                 setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantId ? { ...m, content: cap } : m))
+                  prev.map((m) =>
+                    m.id === assistantId ? { ...m, content: finalContent } : m
+                  )
                 );
               }
             }
           } catch {
-            if (raw && raw !== '[DONE]') {
-              fullContent += raw;
-              const cap = fullContent;
-              setMessages((prev) =>
-                prev.map((m) => (m.id === assistantId ? { ...m, content: cap } : m))
-              );
-            }
+            // not valid json - ignore
           }
         }
       }
@@ -117,7 +116,6 @@ export default function SmolChatApp(_props: AppComponentProps) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: '#0a0e17', color: '#e0e0e0' }}>
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 shrink-0"
         style={{ borderBottom: '1px solid #1a2332', background: '#0d1420' }}>
         <div className="flex items-center gap-2">
@@ -130,7 +128,6 @@ export default function SmolChatApp(_props: AppComponentProps) {
         <span className="text-xs" style={{ color: '#4a6080' }}>Llama 70B + Claude</span>
       </div>
 
-      {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
@@ -142,8 +139,7 @@ export default function SmolChatApp(_props: AppComponentProps) {
           </div>
         )}
         {messages.map((msg) => (
-          <div key={msg.id}
-            className={'flex gap-3 ' + (msg.role === 'user' ? 'justify-end' : 'justify-start')}>
+          <div key={msg.id} className={'flex gap-3 ' + (msg.role === 'user' ? 'justify-end' : 'justify-start')}>
             {msg.role === 'assistant' && (
               <div className="w-6 h-6 rounded-lg shrink-0 flex items-center justify-center mt-0.5"
                 style={{ background: '#00e5cc22', border: '1px solid #00e5cc44' }}>
@@ -186,10 +182,8 @@ export default function SmolChatApp(_props: AppComponentProps) {
             <span className="text-xs" style={{ color: '#4a6080' }}>{statusText}</span>
           </div>
         )}
-        
       </div>
 
-      {/* Input */}
       <div className="shrink-0 px-4 py-3" style={{ borderTop: '1px solid #1a2332', background: '#0d1420' }}>
         <div className="flex items-end gap-2 rounded-xl px-3 py-2"
           style={{ background: '#111928', border: '1px solid #1a2332' }}>

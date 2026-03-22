@@ -42,7 +42,7 @@ export default function ThreadsApp(_props: AppComponentProps) {
   const [agent, setAgent] = useState('Auto');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const fetchThreads = useCallback(async () => {
     try {
@@ -68,7 +68,7 @@ export default function ThreadsApp(_props: AppComponentProps) {
   }, [selectedId, fetchEvents]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [events]);
 
   const sendMessage = async () => {
@@ -113,7 +113,7 @@ export default function ThreadsApp(_props: AppComponentProps) {
   };
 
   return (
-    <div className="flex h-full" style={{ background: BG, color: TEXT }}>
+    <div className="flex h-full overflow-hidden" style={{ background: BG, color: TEXT }}>
       {/* Left panel - thread list */}
       <div className="w-60 shrink-0 flex flex-col" style={{ borderRight: '1px solid ' + BORDER, background: PANEL }}>
         <div className="flex items-center justify-between px-3 py-2.5 shrink-0"
@@ -195,7 +195,7 @@ export default function ThreadsApp(_props: AppComponentProps) {
             </div>
 
             {/* Events */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
               {loading && (
                 <div className="flex items-center gap-2 justify-center py-4">
                   <RefreshCw size={14} className="animate-spin" style={{ color: MUTED }} />
@@ -241,7 +241,7 @@ export default function ThreadsApp(_props: AppComponentProps) {
                   </div>
                 </div>
               ))}
-              <div ref={bottomRef} />
+              
             </div>
 
             {/* Chat input */}

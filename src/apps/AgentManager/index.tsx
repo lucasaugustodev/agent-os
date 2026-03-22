@@ -136,7 +136,7 @@ export default function AgentManagerApp(_props: AppComponentProps) {
   const setF = (key: keyof Agent, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
   return (
-    <div className="flex h-full" style={{ background: BG, color: TEXT }}>
+    <div className="flex h-full overflow-hidden" style={{ background: BG, color: TEXT }}>
       {/* Left panel */}
       <div className="w-56 shrink-0 flex flex-col" style={{ borderRight: '1px solid ' + BORDER, background: PANEL }}>
         <div className="flex items-center justify-between px-3 py-2.5 shrink-0"

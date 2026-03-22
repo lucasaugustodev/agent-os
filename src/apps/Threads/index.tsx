@@ -17,6 +17,7 @@ interface ThreadEvent {
   type: string;
   content?: string;
   summary?: string;
+  agent_id?: string;
   tool?: string;
   timestamp?: string;
   created_at?: string;
@@ -42,6 +43,7 @@ export default function ThreadsApp(_props: AppComponentProps) {
   const [agent, setAgent] = useState('Auto');
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [statusText, setStatusText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const fetchThreads = useCallback(async () => {
@@ -76,17 +78,43 @@ export default function ThreadsApp(_props: AppComponentProps) {
     const msg = input.trim();
     setInput('');
     setSending(true);
-    setEvents(prev => [...prev, { id: Date.now(), type: 'user_message', content: msg, created_at: new Date().toISOString() }]);
+    setEvents(prev => [...prev, { id: Date.now(), type: 'user_message', content: msg, created_at: new Date().toISOString() } as ThreadEvent]);
     try {
       const resp = await fetch('/api/smol/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, stream: false, threadId: selectedId }),
+        body: JSON.stringify({ message: msg, stream: true, threadId: selectedId }),
       });
-      const data = await resp.json();
-      if (data.result) {
-        setEvents(prev => [...prev, { id: Date.now()+1, type: 'agent_response', agent_id: agent, content: data.result, created_at: new Date().toISOString() } as ThreadEvent]);
+      const reader = resp.body?.getReader();
+      if (!reader) throw new Error('No reader');
+      const decoder = new TextDecoder();
+      let buf = '';
+      let result = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n');
+        buf = parts.pop() || '';
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          const d = part.slice(6).trim();
+          if (d === '[DONE]') continue;
+          try {
+            const ev = JSON.parse(d);
+            if (ev.event === 'status' || ev.type === 'status') {
+              setStatusText(ev.text || 'Pensando...');
+            }
+            if ((ev.event === 'done' || ev.type === 'done') && (ev.result || ev.content)) {
+              result = ev.result || ev.content;
+            }
+          } catch {}
+        }
       }
+      if (result) {
+        setEvents(prev => [...prev, { id: Date.now()+1, type: 'agent_response', agent_id: agent, content: result, created_at: new Date().toISOString() } as ThreadEvent]);
+      }
+      setStatusText('');
       await fetchEvents(selectedId);
     } catch {}
     setSending(false);
@@ -213,15 +241,47 @@ export default function ThreadsApp(_props: AppComponentProps) {
                   <span className="text-xs" style={{ color: MUTED }}>Sem eventos</span>
                 </div>
               )}
-              {displayEvents.map((ev) => (
-                <div key={ev.id} className="flex gap-3">
-                  {tab === 'timeline' && (
-                    <div className="flex flex-col items-center">
-                      <div className="w-2 h-2 rounded-full mt-1.5 shrink-0"
-                        style={{ background: ev.type === 'user_message' ? ACCENT : ev.type.startsWith('agent') ? '#7c3aed' : MUTED }} />
-                      <div className="w-px flex-1 mt-1" style={{ background: BORDER }} />
+              {displayEvents.map((ev) => {
+                const isUser = ev.type === 'user_message';
+                const isAgent = ev.type === 'agent_response' || ev.type === 'agent_summary';
+                const text = ev.content ?? ev.summary;
+
+                if (tab === 'chat') {
+                  // Chat bubbles
+                  if (!isUser && !isAgent) return null;
+                  return (
+                    <div key={ev.id} className="flex" style={{ justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+                      <div style={{
+                        maxWidth: '75%',
+                        padding: '8px 12px',
+                        borderRadius: '14px',
+                        borderBottomRightRadius: isUser ? '4px' : undefined,
+                        borderBottomLeftRadius: !isUser ? '4px' : undefined,
+                        background: isUser ? ACCENT + '18' : '#ffffff08',
+                        border: '1px solid ' + (isUser ? ACCENT + '33' : '#ffffff0a'),
+                      }}>
+                        {!isUser && ev.agent_id && (
+                          <div className="text-xs font-medium mb-1" style={{ color: ACCENT }}>{ev.agent_id}</div>
+                        )}
+                        <div className="text-sm leading-relaxed" style={{ whiteSpace: 'pre-wrap', userSelect: 'text', wordBreak: 'break-word' }}>
+                          {text}
+                        </div>
+                        <div className="text-right mt-1" style={{ fontSize: '9px', color: MUTED }}>
+                          {formatTime(ev.timestamp ?? ev.created_at)}
+                        </div>
+                      </div>
                     </div>
-                  )}
+                  );
+                }
+
+                // Timeline mode
+                return (
+                <div key={ev.id} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                      style={{ background: isUser ? ACCENT : isAgent ? '#7c3aed' : MUTED }} />
+                    <div className="w-px flex-1 mt-1" style={{ background: BORDER }} />
+                  </div>
                   <div className="flex-1 min-w-0 pb-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-medium px-1.5 py-0.5 rounded"
@@ -233,7 +293,7 @@ export default function ThreadsApp(_props: AppComponentProps) {
                         {formatTime(ev.timestamp ?? ev.created_at)}
                       </span>
                     </div>
-                    {(ev.content ?? ev.summary) && (
+                    {text && (
                       <div className="px-3 py-2 rounded-lg text-sm leading-relaxed"
                         style={{
                           background: eventColor(ev.type),
@@ -241,13 +301,20 @@ export default function ThreadsApp(_props: AppComponentProps) {
                           whiteSpace: 'pre-wrap',
                           userSelect: 'text',
                         }}>
-                        {ev.content ?? ev.summary}
+                        {text}
                       </div>
                     )}
                   </div>
                 </div>
-              ))}
-              
+                );
+              })}
+              {sending && (
+                <div className="flex justify-start">
+                  <div className="px-3 py-2 rounded-xl text-xs" style={{ background: '#ffffff08', color: ACCENT, border: '1px solid ' + ACCENT + '22' }}>
+                    {statusText || 'Pensando...'}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Chat input */}

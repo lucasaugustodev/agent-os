@@ -23,6 +23,14 @@ const ACCENT = '#00e5cc';
 const TEXT = '#e0e0e0';
 const MUTED = '#4a6080';
 
+
+function safeParse(val: unknown): string[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') { try { return JSON.parse(val); } catch { return []; } }
+  return [];
+}
+
 export default function KnowledgeApp(_props: AppComponentProps) {
   const [tab, setTab] = useState<KTab>('knowledge');
   const [items, setItems] = useState<KItem[]>([]);
@@ -165,9 +173,9 @@ export default function KnowledgeApp(_props: AppComponentProps) {
                   className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-white/5 transition-colors text-left">
                   {isOpen ? <ChevronDown size={13} style={{ color: MUTED }} /> : <ChevronRight size={13} style={{ color: MUTED }} />}
                   <span className="flex-1 text-sm font-medium truncate">{label}</span>
-                  {item.tags && item.tags.length > 0 && (
+                  {safeParse(item.tags).length > 0 && (
                     <div className="flex gap-1">
-                      {item.tags.slice(0, 3).map((tag) => (
+                      {safeParse(item.tags).slice(0, 3).map((tag: string) => (
                         <span key={tag} className="text-xs px-1.5 py-0.5 rounded"
                           style={{ background: ACCENT + '15', color: ACCENT }}>
                           {tag}

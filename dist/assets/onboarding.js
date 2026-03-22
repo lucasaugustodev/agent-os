@@ -123,7 +123,15 @@
         return p && (p.authType === 'oauth' || p.authType === 'cli_login') && !p.status.authenticated;
       }).map(id => {
         const p = providers.find(x => x.id === id);
-        return `<div style="padding:8px 10px;margin-bottom:4px;border-radius:6px;background:rgba(147,130,255,0.08);font-size:11px;color:#9382ff;">⚡ ${p.name} - use o terminal pra fazer login: ${p.cliCommand} login</div>`;
+        return `<div style="padding:10px;margin-bottom:6px;border-radius:8px;background:rgba(147,130,255,0.06);border:1px solid rgba(147,130,255,0.15);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-size:12px;font-weight:500;color:#9382ff;">${p.name} - Login</div>
+                <div style="font-size:10px;color:#888;margin-top:2px;">Abra o Terminal e execute: ${p.cliCommand === 'gemini' ? 'gemini auth login' : p.cliCommand + ' login'}</div>
+              </div>
+              <button data-action="openTerminal" data-value="${id}" style="padding:5px 14px;border-radius:6px;border:none;background:#9382ff;color:#0a0e17;font-size:11px;cursor:pointer;font-weight:500;">Abrir Login</button>
+            </div>
+          </div>`;
       }).join('')}
       <div style="display:flex;justify-content:space-between;margin-top:16px;">
         <button data-action="back1" style="padding:6px 16px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:11px;cursor:pointer;">Voltar</button>

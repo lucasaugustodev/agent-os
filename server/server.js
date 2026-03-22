@@ -157,6 +157,53 @@ function unwatchAllForClient(ws) {
   }
 }
 
+// --- Raw Terminal API (bash PTY) ---
+import { spawn as ptySpawn } from 'node-pty';
+
+const rawTerminals = new Map();
+
+app.post('/api/terminal/create', (req, res) => {
+  const id = crypto.randomUUID();
+  const cwd = req.body.cwd || '/home/claude';
+  const cmd = req.body.cmd || null;
+
+  const pty = ptySpawn('/bin/bash', cmd ? ['-c', cmd] : [], {
+    name: 'xterm-256color',
+    cols: 120,
+    rows: 30,
+    cwd,
+    env: { ...process.env, TERM: 'xterm-256color', HOME: '/home/claude' },
+  });
+
+  rawTerminals.set(id, { pty, output: '', created: Date.now() });
+
+  pty.onData((data) => {
+    const t = rawTerminals.get(id);
+    if (t) t.output += data;
+  });
+
+  pty.onExit(() => {
+    const t = rawTerminals.get(id);
+    if (t) t.exited = true;
+  });
+
+  res.json({ id, pid: pty.pid });
+});
+
+app.get('/api/terminal/list', (_req, res) => {
+  const list = [];
+  for (const [id, t] of rawTerminals) {
+    list.push({ id, pid: t.pty.pid, exited: !!t.exited, created: t.created });
+  }
+  res.json(list);
+});
+
+app.delete('/api/terminal/:id', (req, res) => {
+  const t = rawTerminals.get(req.params.id);
+  if (t) { try { t.pty.kill(); } catch {} rawTerminals.delete(req.params.id); }
+  res.json({ ok: true });
+});
+
 // --- WebSocket ---
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
@@ -171,6 +218,29 @@ wss.on('connection', (ws) => {
       if (msg.type === 'fs:watch') { unwatchAllForClient(ws); if (msg.path) watchDir(msg.path, ws); return; }
       if (msg.type === 'fs:unwatch') { if (msg.path) unwatchDir(msg.path, ws); else unwatchAllForClient(ws); return; }
       if (msg.type?.startsWith('browser:')) { handleBrowserWsMessage(ws, msg); return; }
+      // Raw terminal messages
+      if (msg.type === 'raw-attach') {
+        const t = rawTerminals.get(msg.terminalId);
+        if (!t) return;
+        // Send existing output
+        if (t.output) ws.send(JSON.stringify({ type: 'output', data: t.output }));
+        // Stream new output
+        t.pty.onData((data) => {
+          if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'output', data }));
+        });
+        t.wsClient = ws;
+        return;
+      }
+      if (msg.type === 'raw-input') {
+        const t = rawTerminals.get(msg.terminalId);
+        if (t && !t.exited) t.pty.write(msg.data);
+        return;
+      }
+      if (msg.type === 'raw-resize') {
+        const t = rawTerminals.get(msg.terminalId);
+        if (t && !t.exited) t.pty.resize(msg.cols || 120, msg.rows || 30);
+        return;
+      }
       if (['attach', 'detach', 'input', 'resize', 'stream-json-input'].includes(msg.type)) {
         if (!launcherWs || launcherWs.readyState !== WebSocket.OPEN) {
           launcherWs = new WebSocket(LAUNCHER_WS);

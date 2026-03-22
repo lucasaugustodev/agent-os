@@ -38,7 +38,7 @@ export function Dock() {
   }
 
   function getIcon(iconName: string) {
-    const Icon = (Icons as Record<string, React.ComponentType<{ size?: number }>>)[
+    const Icon = (Icons as unknown as Record<string, React.ComponentType<{ size?: number }>>)[
       iconName.charAt(0).toUpperCase() + iconName.slice(1)
     ] ?? Icons.AppWindow;
     return <Icon size={22} />;

@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-9YgKe2Eq.js";var t=e();function n(e){return(0,t.jsx)(`iframe`,{src:`http://localhost:7681`,className:`w-full h-full border-none`,style:{background:`#0a0e17`},title:`Terminal`})}export{n as default};

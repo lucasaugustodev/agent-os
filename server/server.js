@@ -41,6 +41,10 @@ if (existsSync(distDir)) {
 }
 
 // --- Health ---
+app.get('/onboarding', (_req, res) => { res.sendFile(join(distDir, 'index.html')); });
+
+app.get('/api/onboarding/reset', (_req, res) => { try { require('fs').unlinkSync(join(__dirname, '..', 'data', 'onboarding.json')); } catch {} res.json({ ok: true }); });
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
 });

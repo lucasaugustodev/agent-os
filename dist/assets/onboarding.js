@@ -191,6 +191,32 @@
       providers.push(...d.providers);
       render();
     }
+    if (action === 'openTerminal') {
+      const p = providers.find(x => x.id === value);
+      const cmd = p?.cliCommand || value;
+      // Open terminal via launcher API
+      try {
+        const loginCmd = cmd === 'claude' ? 'claude login' : cmd === 'gemini' ? 'gemini auth login' : cmd + ' auth';
+        const resp = await fetch('/api/launcher/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profileId: 'default',
+            prompt: loginCmd,
+          }),
+        });
+        if (resp.ok) {
+          // Open the terminal app in Agent OS
+          alert('Terminal aberto! Complete o login no terminal do Agent OS e depois clique Continuar.');
+        } else {
+          // Fallback: open terminal app directly
+          alert('Abra o Terminal no Agent OS e execute: ' + loginCmd);
+        }
+      } catch {
+        alert('Abra o Terminal no Agent OS e execute: ' + (cmd === 'gemini' ? 'gemini auth login' : cmd + ' login'));
+      }
+      return;
+    }
     if (action === 'finish') {
       await fetch('/api/onboarding/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ selectedProviders: [...selected], orchestratorModel: orchestratorChoice }) });
       overlay.remove();

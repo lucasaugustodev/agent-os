@@ -202,28 +202,37 @@
     if (action === 'openTerminal') {
       const p = providers.find(x => x.id === value);
       const cmd = p?.cliCommand || value;
-      // Open terminal via launcher API
-      try {
-        const loginCmd = cmd === 'claude' ? 'claude login' : cmd === 'gemini' ? 'gemini auth login' : cmd + ' auth';
-        const resp = await fetch('/api/launcher/sessions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            profileId: 'default',
-            prompt: loginCmd,
-          }),
-        });
-        if (resp.ok) {
-          // Open the terminal app in Agent OS
-          alert('Terminal aberto! Complete o login no terminal do Agent OS e depois clique Continuar.');
-        } else {
-          // Fallback: open terminal app directly
-          alert('Abra o Terminal no Agent OS e execute: ' + loginCmd);
+      const loginCmd = cmd === 'gemini' ? 'gemini auth login' : cmd + ' login';
+
+      // Click Terminal button in the dock to open Terminal app
+      document.querySelectorAll('button').forEach(btn => {
+        if (btn.textContent.trim() === 'Terminal' || btn.textContent.includes('Neural Terminal')) {
+          btn.click();
         }
-      } catch {
-        alert('Abra o Terminal no Agent OS e execute: ' + (cmd === 'gemini' ? 'gemini auth login' : cmd + ' login'));
-      }
+      });
+
+      // Minimize onboarding to show Terminal behind
+      overlay.style.background = 'rgba(0,0,0,0.2)';
+      overlay.style.pointerEvents = 'none';
+      const modal = overlay.querySelector('div');
+      modal.style.cssText += ';transform:scale(0.6) translateY(-50vh);opacity:0.7;pointer-events:all;transition:all 0.3s;';
+
+      // Add floating instruction + back button
+      const bar = document.createElement('div');
+      bar.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;z-index:10001;background:#0d1117;border:1px solid rgba(147,130,255,0.3);border-radius:12px;padding:8px 16px;';
+      bar.innerHTML = '<span style="font-size:11px;color:#9382ff;">Execute no terminal: <strong>' + loginCmd + '</strong></span><button id="ob-back" style="padding:4px 12px;border-radius:6px;border:none;background:#9382ff;color:#0a0e17;font-size:10px;cursor:pointer;font-weight:500;">Voltar ao Setup</button>';
+      document.body.appendChild(bar);
+
+      document.getElementById('ob-back').onclick = () => {
+        overlay.style.background = 'rgba(0,0,0,0.85)';
+        overlay.style.pointerEvents = 'auto';
+        modal.style.cssText += ';transform:none;opacity:1;';
+        bar.remove();
+        // Refresh status
+        fetch('/api/onboarding/status').then(r=>r.json()).then(d=>{providers.length=0;providers.push(...d.providers);render()});
+      };
       return;
+    }
     }
     if (action === 'finish') {
       await fetch('/api/onboarding/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ selectedProviders: [...selected], orchestratorModel: orchestratorChoice }) });

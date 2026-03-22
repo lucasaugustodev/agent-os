@@ -4,6 +4,8 @@ import { createDatabaseAPI } from "./database.js";
 import db from "./database.js";
 import { createMemoryAPI, organizeMessage } from "./memory-organizer.js";
 import { createFlowAPI } from "./flow-engine.js";
+import { initExecutor } from "./agent-executor.js";
+import { createSmolChatHandler } from "./smol-chat-handler.js";
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -551,6 +553,7 @@ app.get('/api/github/notifications', async (_req, res) => {
 });
 
 // --- SmolAgent daemon proxy ---
+/* OLD SMOL CHAT HANDLER - replaced by smol-chat-handler.js
 app.post('/api/smol/chat', async (req, res) => {
   // Route through orchestrator with real-time streaming
   try {
@@ -897,6 +900,8 @@ app.post('/api/smol/chat', async (req, res) => {
   }
 });
 
+*/
+
 app.get('/api/smol/health', async (_req, res) => {
   try {
     const resp = await fetch('http://127.0.0.1:8082/');
@@ -931,6 +936,8 @@ const orchestrator = createOrchestratorAPI(app);
 createDatabaseAPI(app);
 createMemoryAPI(app, db);
 createFlowAPI(app, db);
+initExecutor(db);
+createSmolChatHandler(app, db);
 console.log("Orchestrator + Database + Memory + Flows loaded");
 
 

@@ -67,6 +67,24 @@ export function Dock() {
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
       }}
     >
+      {/* Synthesize Agent button */}
+      <motion.button
+        whileHover={{ scale: 1.03 }}
+        whileTap={{ scale: 0.97 }}
+        className="flex items-center gap-2 px-4 py-2 rounded-xl mr-1 cursor-pointer"
+        style={{ background: 'var(--os-accent)', color: '#0a0e17' }}
+        onClick={() => {
+          const entry = registry.find((a) => a.id === 'agents');
+          launchApp('agents', { title: 'Agent Manager', size: entry?.defaultSize, data: { view: 'create' } });
+        }}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span className="text-xs font-semibold tracking-wide whitespace-nowrap">Synthesize Agent</span>
+      </motion.button>
+
+      {/* Separator */}
+      <div className="w-px h-7 mx-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+
       {pinnedApps.map((app) => {
         const isRunning = runningAppIds.has(app.id);
         const isFocused = instances.some(

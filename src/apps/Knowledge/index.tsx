@@ -68,12 +68,29 @@ export default function KnowledgeApp(_props: AppComponentProps) {
       (item.path ?? '').toLowerCase().includes(q);
   });
 
-  const toggleExpand = (id: string) => {
+  const [details, setDetails] = useState<Record<string, string>>({});
+
+  const toggleExpand = async (id: string, item?: KItem) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+    // Fetch detail if not loaded
+    if (!details[id] && item) {
+      try {
+        if (tab === 'knowledge' && item.id) {
+          const r = await fetch('/api/memory/knowledge/' + item.id);
+          const d = await r.json();
+          if (d.content) setDetails(prev => ({...prev, [id]: d.content}));
+        } else if (tab === 'files' && item.path) {
+          const name = (item.path || item.name || '').split('/').pop() || '';
+          const r = await fetch('/api/memory/files/' + encodeURIComponent(name));
+          const d = await r.json();
+          if (d.content) setDetails(prev => ({...prev, [id]: d.content}));
+        }
+      } catch {}
+    }
   };
 
   const getKey = (item: KItem, i: number) => item.id ?? item.path ?? String(i);
@@ -164,12 +181,12 @@ export default function KnowledgeApp(_props: AppComponentProps) {
           {filtered.map((item, i) => {
             const key = getKey(item, i);
             const label = item.name ?? item.title ?? item.path ?? key;
-            const body = item.content ?? item.summary;
+            const body = details[key] || item.content || item.summary || item.description;
             const isOpen = expanded.has(key);
             return (
               <div key={key} className="rounded-lg overflow-hidden"
                 style={{ border: '1px solid ' + BORDER, background: SURFACE }}>
-                <button onClick={() => toggleExpand(key)}
+                <button onClick={() => toggleExpand(key, item)}
                   className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-white/5 transition-colors text-left">
                   {isOpen ? <ChevronDown size={13} style={{ color: MUTED }} /> : <ChevronRight size={13} style={{ color: MUTED }} />}
                   <span className="flex-1 text-sm font-medium truncate">{label}</span>
@@ -189,10 +206,10 @@ export default function KnowledgeApp(_props: AppComponentProps) {
                     </span>
                   )}
                 </button>
-                {isOpen && body && (
+                {isOpen && (
                   <div className="px-4 pb-3 pt-1 text-sm leading-relaxed"
                     style={{ color: TEXT + 'cc', whiteSpace: 'pre-wrap', borderTop: '1px solid ' + BORDER, userSelect: 'text' }}>
-                    {body}
+                    {body || 'Carregando...'}
                   </div>
                 )}
               </div>

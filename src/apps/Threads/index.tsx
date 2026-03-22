@@ -73,13 +73,31 @@ export default function ThreadsApp(_props: AppComponentProps) {
 
   const sendMessage = async () => {
     if (!input.trim() || sending || !selectedId) return;
+    const msg = input.trim();
+    setInput('');
     setSending(true);
+    setEvents(prev => [...prev, { id: Date.now(), type: 'user_message', content: msg, created_at: new Date().toISOString() }]);
     try {
-      await fetch('/api/threads/' + selectedId + '/messages', {
+      const resp = await fetch('/api/smol/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: input.trim(), agent }),
+        body: JSON.stringify({ message: msg, stream: true, threadId: selectedId }),
       });
+      const text = await resp.text();
+      const lines = text.split('\n');
+      let result = '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const ev = JSON.parse(data);
+          if ((ev.event === 'done' || ev.type === 'done') && (ev.result || ev.content)) result = ev.result || ev.content;
+        } catch {}
+      }
+      if (result) {
+        setEvents(prev => [...prev, { id: Date.now()+1, type: 'agent_response', agent_id: agent, content: result, created_at: new Date().toISOString() }]);
+      }
       setInput('');
       await fetchEvents(selectedId);
     } catch {}

@@ -53,7 +53,8 @@ function AgentManager(){
 
   async function saveAgent(){
     const caps=fCaps.split(',').map(s=>s.trim()).filter(Boolean);
-    const body={id:fId||fName.toLowerCase().replace(/\s+/g,'-'),name:fName,description:fDesc,agent_type:fType,model_id:fModel||null,icon:fIcon,system_prompt:fPrompt||null,acpx_command:fAcpx||null,capabilities:caps};
+    const autoIcon=fType==='cli'?'code':fType==='local'?'database':fType==='api'?'zap':'bot';
+    const body={id:fName.toLowerCase().replace(/[^a-z0-9-]/g,'-').replace(/-+/g,'-'),name:fName,description:fDesc,agent_type:fType,model_id:fModel||null,icon:autoIcon,system_prompt:fPrompt||null,acpx_command:fAcpx||null,capabilities:caps};
     if(showCreate){
       await fetch('/api/db/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     }else{
@@ -101,8 +102,8 @@ function AgentManager(){
         c.jsx('div',{className:'flex-1 overflow-y-auto',style:{padding:'8px'},children:
           loading?c.jsx('div',{style:{padding:'20px',textAlign:'center',color:'#666',fontSize:'11px'},children:'Carregando...'}):
           // Group by type
-          ['smol','cli','acpx','api','local'].map(type=>{
-            const typeAgents=agents.filter(a=>a.agent_type===type||(type==='cli'&&a.agent_type==='acpx'));
+          ['smol','cli','api','local'].map(type=>{
+            const typeAgents=agents.filter(a=>a.agent_type===type||(type==='cli'&&a.agent_type==='acpx')||(type==='local'&&a.model_ref?.includes('local')));
             if(typeAgents.length===0&&type!=='smol'&&type!=='cli') return null;
             return c.jsxs('div',{key:type,style:{marginBottom:'12px'},children:[
               c.jsxs('div',{style:{fontSize:'9px',fontWeight:600,color:typeColor(type),textTransform:'uppercase',letterSpacing:'0.5px',padding:'4px 8px',display:'flex',justifyContent:'space-between'},children:[
@@ -138,19 +139,16 @@ function AgentManager(){
               c.jsxs('div',{style:{marginBottom:'12px'},children:[
                 c.jsx('label',{style:{fontSize:'10px',color:'#888',display:'block',marginBottom:'4px'},children:'Tipo do Agente'}),
                 c.jsxs('div',{style:{display:'flex',gap:'4px'},children:
-                  ['smol','cli','api','local'].map(t=>c.jsx('button',{key:t,onClick:()=>setFType(t),style:{padding:'4px 12px',borderRadius:'6px',border:'1px solid '+(fType===t?typeColor(t):'rgba(255,255,255,0.1)'),background:fType===t?typeColor(t)+'22':'transparent',color:fType===t?typeColor(t):'#888',fontSize:'10px',cursor:'pointer'},children:typeLabel(t)}))
+                  ['smol','cli','api','local'].map(t=>c.jsx('button',{key:t,onClick:()=>{setFType(t);setFModel('');if(t==='cli'&&!fAcpx) setFAcpx('npx -y @zed-industries/claude-agent-acp')},style:{padding:'4px 12px',borderRadius:'6px',border:'1px solid '+(fType===t?typeColor(t):'rgba(255,255,255,0.1)'),background:fType===t?typeColor(t)+'22':'transparent',color:fType===t?typeColor(t):'#888',fontSize:'10px',cursor:'pointer'},children:typeLabel(t)}))
                 })
               ]}),
               // Name + ID
-              c.jsxs('div',{style:{display:'flex',gap:'8px',marginBottom:'12px'},children:[
+              c.jsxs('div',{style:{marginBottom:'12px'},children:[
                 c.jsxs('div',{style:{flex:1},children:[
                   c.jsx('label',{style:{fontSize:'10px',color:'#888',display:'block',marginBottom:'4px'},children:'Nome'}),
                   c.jsx('input',{value:fName,onChange:ev=>{setFName(ev.target.value);if(showCreate) setFId(ev.target.value.toLowerCase().replace(/\s+/g,'-'))},style:{width:'100%',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'6px',padding:'6px 10px',color:'#e0e0e0',fontSize:'11px',outline:'none'}})
                 ]}),
-                c.jsxs('div',{style:{width:'120px'},children:[
-                  c.jsx('label',{style:{fontSize:'10px',color:'#888',display:'block',marginBottom:'4px'},children:'ID'}),
-                  c.jsx('input',{value:fId,onChange:ev=>setFId(ev.target.value),disabled:!showCreate,style:{width:'100%',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'6px',padding:'6px 10px',color:showCreate?'#e0e0e0':'#666',fontSize:'11px',outline:'none'}})
-                ]})
+
               ]}),
               // Description
               c.jsxs('div',{style:{marginBottom:'12px'},children:[
@@ -162,7 +160,12 @@ function AgentManager(){
                 c.jsx('label',{style:{fontSize:'10px',color:'#888',display:'block',marginBottom:'4px'},children:'Modelo'}),
                 c.jsx('select',{value:fModel,onChange:ev=>setFModel(ev.target.value),style:{width:'100%',background:'#0d1117',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'6px',padding:'6px 10px',color:'#e0e0e0',fontSize:'11px'},children:[
                   c.jsx('option',{value:'',children:'Selecionar modelo...'}),
-                  ...models.map(m=>c.jsx('option',{key:m.id,value:m.id,children:m.name+' ('+m.provider_name+')'}))
+                  ...models.filter(m=>{
+                    if(fType==='local') return m.type==='local';
+                    if(fType==='cli'||fType==='acpx') return m.provider_name?.includes('Anthropic')||m.provider_name?.includes('Google');
+                    if(fType==='api') return m.type==='cloud'&&!m.provider_name?.includes('Local');
+                    return m.type==='cloud';
+                  }).map(m=>c.jsx('option',{key:m.id,value:m.id,children:m.name+' ('+m.provider_name+')'}))
                 ]})
               ]}),
               // ACPX command (for CLI type)
@@ -180,15 +183,7 @@ function AgentManager(){
                 c.jsx('label',{style:{fontSize:'10px',color:'#888',display:'block',marginBottom:'4px'},children:'Capacidades (separadas por virgula)'}),
                 c.jsx('input',{value:fCaps,onChange:ev=>setFCaps(ev.target.value),placeholder:'code, analysis, sql, text',style:{width:'100%',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'6px',padding:'6px 10px',color:'#e0e0e0',fontSize:'11px',outline:'none'}})
               ]}),
-              // Icon
-              c.jsxs('div',{style:{marginBottom:'16px'},children:[
-                c.jsx('label',{style:{fontSize:'10px',color:'#888',display:'block',marginBottom:'4px'},children:'Icone'}),
-                c.jsxs('div',{style:{display:'flex',gap:'4px'},children:
-                  ['bot','code','database','brain','terminal','globe','zap','search','file-text','git-branch'].map(icon=>
-                    c.jsx('button',{key:icon,onClick:()=>setFIcon(icon),style:{padding:'4px 8px',borderRadius:'4px',border:'1px solid '+(fIcon===icon?'#00e5cc':'rgba(255,255,255,0.08)'),background:fIcon===icon?'rgba(0,229,204,0.1)':'transparent',color:fIcon===icon?'#00e5cc':'#888',fontSize:'10px',cursor:'pointer'},children:icon})
-                  )
-                })
-              ]}),
+
               // Actions
               c.jsxs('div',{style:{display:'flex',gap:'6px'},children:[
                 c.jsx('button',{onClick:()=>{setShowCreate(false);setEditMode(false)},style:{padding:'6px 16px',borderRadius:'6px',border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#888',fontSize:'11px',cursor:'pointer'},children:'Cancelar'}),

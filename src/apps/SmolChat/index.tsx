@@ -14,11 +14,11 @@ export default function SmolChatApp(_props: AppComponentProps) {
   const [input, setInput] = useState('');
   const [statusText, setStatusText] = useState('');
   const [active, setActive] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, active]);
 
   const sendMessage = useCallback(async () => {
@@ -116,7 +116,7 @@ export default function SmolChatApp(_props: AppComponentProps) {
   };
 
   return (
-    <div className="flex flex-col h-full" style={{ background: '#0a0e17', color: '#e0e0e0' }}>
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: '#0a0e17', color: '#e0e0e0' }}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2.5 shrink-0"
         style={{ borderBottom: '1px solid #1a2332', background: '#0d1420' }}>
@@ -131,7 +131,7 @@ export default function SmolChatApp(_props: AppComponentProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
@@ -186,7 +186,7 @@ export default function SmolChatApp(_props: AppComponentProps) {
             <span className="text-xs" style={{ color: '#4a6080' }}>{statusText}</span>
           </div>
         )}
-        <div ref={bottomRef} />
+        
       </div>
 
       {/* Input */}

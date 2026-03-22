@@ -20,6 +20,7 @@ import db from './database.js';
 import { createMemoryAPI } from './memory-organizer.js';
 import { createFlowAPI } from './flow-engine.js';
 import { initExecutor } from './agent-executor.js';
+import { createOnboardingAPI } from "./onboarding.js";
 import { createSmolChatHandler } from './smol-chat-handler.js';
 
 // Browser manager (for WebSocket)
@@ -57,6 +58,7 @@ createMemoryAPI(app, db);
 createFlowAPI(app, db);
 initExecutor(db);
 createSmolChatHandler(app, db);
+createOnboardingAPI(app, db);
 
 // --- SmolAgent health ---
 app.get('/api/smol/health', async (_req, res) => {

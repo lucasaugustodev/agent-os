@@ -1,3 +1,4 @@
+import { executeAgent } from './agent-executor.js';
 /**
  * Agent OS Flow Engine
  * Executes flows: sequences of agent steps with monitoring and validation.
@@ -271,25 +272,13 @@ export function createFlowAPI(app, db) {
 
     // Execute in background
     const chatFn = async (prompt, agentId, threadId) => {
-      // Use smol/chat which handles ACPX exec mode properly
-      const resp = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/api/smol/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: prompt, stream: true, threadId }),
-      });
-      // Parse SSE stream to extract result
-      const text = await resp.text();
-      const lines = text.split('\n');
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') continue;
-        try {
-          const ev = JSON.parse(data);
-          if (ev.event === 'done' && ev.result) return ev.result;
-        } catch {}
+      // Direct execution via agent-executor (no HTTP loopback)
+      try {
+        return await executeAgent(agentId || 'gestor', prompt, { threadId });
+      } catch (err) {
+        console.error('[FLOW] Agent execution error:', err.message);
+        return 'Error: ' + err.message;
       }
-      return 'Step completed';
     };
 
     executeFlow(db, req.params.id, chatFn).catch(err => {

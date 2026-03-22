@@ -7,25 +7,10 @@
  * Roda em background apos cada mensagem, nao bloqueia o usuario.
  */
 
-const HF_API = 'https://router.huggingface.co/groq/openai/v1/chat/completions';
-const HF_MODEL = 'llama-3.3-70b-versatile';
+import { askLlm } from './agent-executor.js';
 
 async function askLlama(systemPrompt, userContent, token) {
-  const r = await fetch(HF_API, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: HF_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-      max_tokens: 500,
-      temperature: 0.2,
-    }),
-  });
-  const data = await r.json();
-  return data.choices?.[0]?.message?.content || '';
+  return askLlm(userContent, { systemPrompt, maxTokens: 500, temperature: 0.2 });
 }
 
 // ============ DETECTORS ============

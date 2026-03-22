@@ -12,6 +12,7 @@
  */
 
 import { spawn } from 'child_process';
+import { getAllAgents, executeAgent as execAgent, routeMessage as routeMsg, askLlm as askLlmUtil } from './agent-executor.js';
 import { searchMemoryFiles } from './memory-organizer.js';
 import { EventEmitter } from 'events';
 
@@ -23,25 +24,17 @@ const HF_API = 'https://router.huggingface.co/groq/openai/v1/chat/completions';
 
 const LOCAL_LLM_URL = process.env.LOCAL_LLM_URL || 'http://localhost:8080';
 
-const AGENT_REGISTRY = {
-  claude: {
-    name: 'Claude Code',
-    command: 'claude',
-    description: 'Coding, analysis, architecture, planning, debugging',
-    capabilities: ['code', 'analysis', 'planning', 'debugging', 'refactoring'],
-  },
-  sql: {
-    name: 'SQL Agent (Local 1.5B)',
-    endpoint: LOCAL_LLM_URL,
-    description: 'SQL queries, Supabase, database operations, information_schema',
-    capabilities: ['sql', 'database', 'supabase', 'query'],
-  },
-  direct: {
-    name: 'Gestor (Llama 70B)',
-    description: 'Duvidas gerais, explicacoes, orientacao, conversacao',
-    capabilities: ['chat', 'explain', 'help', 'general'],
-  },
-};
+// Agent registry loaded dynamically from database via agent-executor
+function getAgentRegistry() {
+  const agents = getAllAgents();
+  const registry = {};
+  for (const a of agents) {
+    registry[a.id] = { name: a.name, description: a.description, capabilities: JSON.parse(a.capabilities || '[]') };
+  }
+  registry['direct'] = { name: 'Gestor (Llama 70B)', description: 'Duvidas gerais', capabilities: ['chat'] };
+  return registry;
+}
+const AGENT_REGISTRY = getAgentRegistry();
 
 // ============ HF INFERENCE (Gestor) ============
 
@@ -334,10 +327,8 @@ class Orchestrator extends EventEmitter {
   }
 
   getAgents() {
-    return Object.entries(AGENT_REGISTRY).map(([id, agent]) => ({
-      id,
-      ...agent,
-    }));
+    const reg = getAgentRegistry();
+    return Object.entries(reg).map(([id, agent]) => ({ id, ...agent }));
   }
 
   getSessions() {

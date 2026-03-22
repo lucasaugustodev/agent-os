@@ -1,7 +1,27 @@
 import { motion } from 'framer-motion';
-import * as Icons from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { getRegistry } from '../../config/appRegistry';
+
+// Emoji map for dock icons matching the old design
+const DOCK_EMOJI: Record<string, string> = {
+  globe: '◎',
+  terminal: '>',
+  messageSquare: '💬',
+  inbox: '📋',
+  brain: '🧠',
+  layoutDashboard: '🔀',
+  bot: '🤖',
+  folderOpen: '📁',
+  activity: '⚡',
+  gitBranch: '⌥',
+  database: '◆',
+  container: '🐳',
+  settings: '⚙',
+};
+
+function getEmoji(iconName: string): string {
+  return DOCK_EMOJI[iconName] ?? iconName.charAt(0).toUpperCase();
+}
 
 export function Dock() {
   const instances = useAppStore((s) => s.instances);
@@ -18,42 +38,33 @@ export function Dock() {
     const appInstances = instances.filter((i) => i.appId === appId);
     if (appInstances.length === 0) {
       const entry = registry.find((a) => a.id === appId);
-      launchApp(appId, {
-        title: entry?.name ?? appId,
-        size: entry?.defaultSize,
-      });
+      launchApp(appId, { title: entry?.name ?? appId, size: entry?.defaultSize });
       return;
     }
-    // If there's a minimized instance, restore it
     const minimized = appInstances.find((i) => i.isMinimized);
     if (minimized) {
       restoreInstance(minimized.instanceId);
       return;
     }
-    // Bring the most recent to foreground
     const topInstance = appInstances[appInstances.length - 1];
     if (topInstance) {
       bringToForeground(topInstance.instanceId);
     }
   }
 
-  function getIcon(iconName: string) {
-    const Icon = (Icons as unknown as Record<string, React.ComponentType<{ size?: number }>>)[
-      iconName.charAt(0).toUpperCase() + iconName.slice(1)
-    ] ?? Icons.AppWindow;
-    return <Icon size={22} />;
-  }
+  const nonPinnedRunning = [...runningAppIds].filter((id) => !pinnedApps.find((p) => p.id === id));
 
   return (
     <motion.div
       initial={{ y: 20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ delay: 0.2, duration: 0.3 }}
-      className="fixed bottom-2 left-1/2 -translate-x-1/2 flex items-end gap-1 px-3 py-1.5 rounded-2xl z-[1000]"
+      transition={{ delay: 0.3, duration: 0.4, ease: [0.2, 0, 0, 1] }}
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-2 rounded-2xl z-[1000]"
       style={{
-        background: 'var(--os-dock)',
-        backdropFilter: 'blur(20px)',
+        background: 'rgba(10, 16, 28, 0.70)',
+        backdropFilter: 'blur(48px) saturate(150%)',
         border: '1px solid rgba(255,255,255,0.08)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
       }}
     >
       {pinnedApps.map((app) => {
@@ -61,30 +72,33 @@ export function Dock() {
         const isFocused = instances.some(
           (i) => i.appId === app.id && i.instanceId === foregroundInstanceId
         );
+        const emoji = getEmoji(app.icon);
 
         return (
           <motion.button
             key={app.id}
-            whileHover={{ scale: 1.15, y: -4 }}
+            whileHover={{ scale: 1.1, y: -3 }}
             whileTap={{ scale: 0.95 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-            className="flex flex-col items-center gap-0.5 p-1.5 rounded-xl transition-colors"
-            style={{
-              color: isFocused ? 'var(--os-accent)' : 'var(--os-text-muted)',
-            }}
+            className="flex flex-col items-center gap-0.5 p-1.5 rounded-xl cursor-pointer relative"
+            style={{ color: isFocused ? 'var(--os-accent)' : 'var(--os-text-muted)' }}
             onClick={() => handleDockClick(app.id)}
             title={app.name}
           >
-            <div className="w-10 h-10 flex items-center justify-center rounded-xl"
+            <div
+              className="w-10 h-10 flex items-center justify-center rounded-xl text-base transition-all"
               style={{
                 background: isFocused
-                  ? 'rgba(137,180,250,0.12)'
+                  ? 'rgba(0, 229, 204, 0.12)'
                   : 'rgba(255,255,255,0.04)',
+                border: isFocused
+                  ? '1px solid rgba(0, 229, 204, 0.2)'
+                  : '1px solid rgba(255,255,255,0.05)',
               }}
             >
-              {getIcon(app.icon)}
+              {emoji}
             </div>
-            {/* Running indicator */}
+            {/* Running dot */}
             <div
               className="w-1 h-1 rounded-full transition-opacity"
               style={{
@@ -96,41 +110,46 @@ export function Dock() {
         );
       })}
 
-      {/* Separator if there are running non-pinned apps */}
-      {instances.some((i) => !pinnedApps.find((p) => p.id === i.appId)) && (
-        <div className="w-px h-8 mx-1" style={{ background: 'var(--os-surface)' }} />
+      {/* Separator for non-pinned running apps */}
+      {nonPinnedRunning.length > 0 && (
+        <div
+          className="w-px h-7 mx-1"
+          style={{ background: 'rgba(255,255,255,0.08)' }}
+        />
       )}
 
-      {/* Running non-pinned apps */}
-      {[...runningAppIds]
-        .filter((id) => !pinnedApps.find((p) => p.id === id))
-        .map((appId) => {
-          const entry = registry.find((a) => a.id === appId);
-          const isFocused = instances.some(
-            (i) => i.appId === appId && i.instanceId === foregroundInstanceId
-          );
-          return (
-            <motion.button
-              key={appId}
-              whileHover={{ scale: 1.15, y: -4 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-              className="flex flex-col items-center gap-0.5 p-1.5 rounded-xl"
+      {/* Non-pinned running apps */}
+      {nonPinnedRunning.map((appId) => {
+        const entry = registry.find((a) => a.id === appId);
+        const isFocused = instances.some(
+          (i) => i.appId === appId && i.instanceId === foregroundInstanceId
+        );
+        const emoji = getEmoji(entry?.icon ?? 'appWindow');
+
+        return (
+          <motion.button
+            key={appId}
+            whileHover={{ scale: 1.1, y: -3 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+            className="flex flex-col items-center gap-0.5 p-1.5 rounded-xl cursor-pointer"
+            style={{ color: isFocused ? 'var(--os-accent)' : 'var(--os-text-muted)' }}
+            onClick={() => handleDockClick(appId)}
+            title={entry?.name ?? appId}
+          >
+            <div
+              className="w-10 h-10 flex items-center justify-center rounded-xl text-base"
               style={{
-                color: isFocused ? 'var(--os-accent)' : 'var(--os-text-muted)',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.05)',
               }}
-              onClick={() => handleDockClick(appId)}
-              title={entry?.name ?? appId}
             >
-              <div className="w-10 h-10 flex items-center justify-center rounded-xl"
-                style={{ background: 'rgba(255,255,255,0.04)' }}
-              >
-                {getIcon(entry?.icon ?? 'appWindow')}
-              </div>
-              <div className="w-1 h-1 rounded-full" style={{ background: 'var(--os-accent)' }} />
-            </motion.button>
-          );
-        })}
+              {emoji}
+            </div>
+            <div className="w-1 h-1 rounded-full" style={{ background: 'var(--os-accent)' }} />
+          </motion.button>
+        );
+      })}
     </motion.div>
   );
 }

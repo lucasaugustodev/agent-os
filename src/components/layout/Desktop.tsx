@@ -6,37 +6,57 @@ import { Dock } from './Dock';
 import { MenuBar } from './MenuBar';
 import type { AppComponentProps } from '../../types/os';
 
-function DesktopIcons() {
+// Sidebar app definitions matching the old design
+const SIDEBAR_APPS = [
+  { id: 'smol-chat', emoji: '🤖', label: 'Agent OS' },
+  { id: 'threads', emoji: '📋', label: 'Threads' },
+  { id: 'knowledge', emoji: '🧠', label: 'Knowledge' },
+  { id: 'flows', emoji: '🔀', label: 'Flows' },
+  { id: 'agent-manager', emoji: '🤖', label: 'Agent Manager' },
+  { id: 'terminal', emoji: '>', label: 'Terminal' },
+  { id: 'browser', emoji: '◎', label: 'Browser' },
+  { id: 'file-explorer', emoji: '📁', label: 'Filesystem' },
+  { id: 'docker', emoji: '🐳', label: 'Docker' },
+  { id: 'pm2-manager', emoji: '⚡', label: 'PM2' },
+  { id: 'supabase', emoji: '◆', label: 'Supabase' },
+  { id: 'github-cli', emoji: '⌥', label: 'GitHub' },
+  { id: 'settings', emoji: '⚙', label: 'Settings' },
+];
+
+function Sidebar() {
   const launchApp = useAppStore((s) => s.launchApp);
   const registry = getRegistry();
-  const pinnedApps = registry.filter((app) => app.dockPinned);
 
   return (
-    <div className="absolute top-12 right-4 flex flex-col gap-3 z-[5]">
-      {pinnedApps.map((app) => (
+    <div className="absolute top-14 right-4 flex flex-col gap-3 z-[5]">
+      {SIDEBAR_APPS.map((item) => (
         <button
-          key={app.id}
-          className="flex flex-col items-center gap-1 p-2 rounded-lg transition-colors hover:bg-white/10 w-20 cursor-pointer"
+          key={item.id}
+          className="flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all hover:bg-white/8 cursor-pointer group"
+          style={{ width: '72px' }}
           onClick={(e) => {
             e.stopPropagation();
-            launchApp(app.id, { title: app.name, size: app.defaultSize });
+            const entry = registry.find((a) => a.id === item.id);
+            if (entry) {
+              launchApp(item.id, { title: entry.name, size: entry.defaultSize });
+            }
           }}
         >
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.06)' }}
+          <div
+            className="w-11 h-11 rounded-xl flex items-center justify-center text-lg transition-all group-hover:scale-105"
+            style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              color: 'var(--os-accent)',
+            }}
           >
-            <span className="text-2xl" style={{ color: 'var(--os-accent)' }}>
-              {app.icon === 'terminal' ? '>' :
-               app.icon === 'inbox' ? '\u2709' :
-               app.icon === 'layoutDashboard' ? '\u25A6' :
-               app.icon === 'bot' ? '\u2699' :
-               app.icon === 'folderOpen' ? '\u{1F4C1}' :
-               app.icon === 'settings' ? '\u2699' :
-               app.icon.charAt(0).toUpperCase()}
-            </span>
+            {item.emoji}
           </div>
-          <span className="text-[10px] text-center leading-tight" style={{ color: 'var(--os-text)' }}>
-            {app.name}
+          <span
+            className="text-[9px] text-center leading-tight opacity-70 group-hover:opacity-100 transition-opacity"
+            style={{ color: 'var(--os-text)' }}
+          >
+            {item.label}
           </span>
         </button>
       ))}
@@ -80,29 +100,18 @@ export function Desktop() {
 
   return (
     <div
-      className="relative w-full h-full overflow-hidden select-none"
+      className="relative w-full h-full overflow-hidden select-none desktop-bg"
       style={{ background: 'var(--os-desktop)' }}
       onMouseDown={(e) => {
-        // Only clear foreground when clicking the actual desktop background
         if (e.target === e.currentTarget) {
           useAppStore.setState({ foregroundInstanceId: null });
         }
       }}
     >
-      {/* Background pattern - pointer-events-none so it doesn't block clicks */}
-      <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 1px 1px, var(--os-text) 1px, transparent 0)',
-          backgroundSize: '32px 32px',
-        }}
-      />
-
       <MenuBar />
 
-      {/* Desktop icons */}
-      <DesktopIcons />
+      {/* Right-side sidebar icons */}
+      <Sidebar />
 
       {/* Windows */}
       {instances.map((instance) => {

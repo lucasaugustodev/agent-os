@@ -1,5 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Minus, Square, Copy } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useAppStore } from '../../stores/useAppStore';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import { useWindowResize, type Edge } from '../../hooks/useWindowResize';
@@ -66,10 +65,10 @@ export function WindowFrame({
     <AnimatePresence>
       <motion.div
         data-window
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.92 }}
-        transition={{ duration: 0.15, ease: [0.2, 0, 0, 1] }}
+        initial={{ opacity: 0, scale: 0.95, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 8 }}
+        transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
         className="absolute"
         style={{
           left: instance.position.x,
@@ -82,71 +81,90 @@ export function WindowFrame({
           if (!isForeground) bringToForeground(instanceId);
         }}
       >
-        {/* Window chrome */}
+        {/* Window chrome with glass effect */}
         <div
-          className="flex flex-col h-full rounded-lg overflow-hidden"
-          style={{
-            background: 'var(--os-window-bg)',
-            border: `1px solid ${isForeground ? 'var(--os-accent)' : 'var(--os-window-border)'}`,
-            boxShadow: isForeground
-              ? '0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(137,180,250,0.15)'
-              : '0 4px 16px rgba(0,0,0,0.3)',
-          }}
+          className={`flex flex-col h-full rounded-2xl overflow-hidden glass-window ${
+            isForeground ? 'glass-window-active' : 'glass-window-inactive'
+          }`}
         >
           {/* Title bar */}
           <div
-            className="flex items-center h-9 px-3 gap-2 shrink-0 select-none"
-            style={{ background: 'var(--os-titlebar)' }}
+            className="flex items-center h-10 px-4 gap-3 shrink-0 select-none"
+            style={{
+              background: 'rgba(0, 0, 0, 0.2)',
+              borderBottom: '1px solid rgba(255,255,255,0.04)',
+            }}
             onPointerDown={handlePointerDown}
             onDoubleClick={() => toggleMaximize(instanceId)}
           >
-            {/* Traffic lights */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                className="w-3 h-3 rounded-full flex items-center justify-center transition-colors group"
-                style={{ background: 'var(--os-red)' }}
-                onClick={(e) => { e.stopPropagation(); closeInstance(instanceId); }}
-                title="Close"
-              >
-                <X size={8} className="opacity-0 group-hover:opacity-100 text-black/80" />
-              </button>
-              <button
-                className="w-3 h-3 rounded-full flex items-center justify-center transition-colors group"
-                style={{ background: 'var(--os-yellow)' }}
-                onClick={(e) => { e.stopPropagation(); minimizeInstance(instanceId); }}
-                title="Minimize"
-              >
-                <Minus size={8} className="opacity-0 group-hover:opacity-100 text-black/80" />
-              </button>
-              <button
-                className="w-3 h-3 rounded-full flex items-center justify-center transition-colors group"
-                style={{ background: 'var(--os-green)' }}
-                onClick={(e) => { e.stopPropagation(); toggleMaximize(instanceId); }}
-                title="Maximize"
-              >
-                {instance.isMaximized
-                  ? <Copy size={7} className="opacity-0 group-hover:opacity-100 text-black/80" />
-                  : <Square size={7} className="opacity-0 group-hover:opacity-100 text-black/80" />
-                }
-              </button>
-            </div>
-
-            {/* Title */}
-            <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
+            {/* Title left side: optional icon + title */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               {icon}
               <span
-                className="text-xs font-medium truncate"
-                style={{ color: isForeground ? 'var(--os-titlebar-text)' : 'var(--os-titlebar-inactive)' }}
+                className="text-xs font-medium tracking-wide truncate"
+                style={{
+                  color: isForeground ? 'var(--os-text)' : 'var(--os-text-muted)',
+                }}
               >
                 {title}
               </span>
             </div>
 
-            {/* Spacer to balance traffic lights */}
-            <div className="w-[52px] shrink-0" />
+            {/* Traffic light buttons - right side */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Minimize */}
+              <button
+                className="w-3 h-3 rounded-full transition-all hover:scale-110 cursor-pointer"
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  minimizeInstance(instanceId);
+                }}
+                title="Minimize"
+                onMouseEnter={(e) => {
+                  (e.target as HTMLButtonElement).style.background = 'var(--os-yellow)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
+                }}
+              />
+              {/* Close */}
+              <button
+                className="w-3 h-3 rounded-full transition-all hover:scale-110 cursor-pointer flex items-center justify-center"
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeInstance(instanceId);
+                }}
+                title="Close"
+                onMouseEnter={(e) => {
+                  (e.target as HTMLButtonElement).style.background = 'var(--os-red)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
+                }}
+              >
+                <svg
+                  width="7"
+                  height="7"
+                  viewBox="0 0 7 7"
+                  className="opacity-0 hover:opacity-100 pointer-events-none"
+                  style={{ color: '#fff' }}
+                >
+                  <line x1="1" y1="1" x2="6" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <line x1="6" y1="1" x2="1" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
           </div>
 
-          {/* Content */}
+          {/* Content area */}
           <div className="flex-1 overflow-hidden">
             {children}
           </div>

@@ -1,61 +1,84 @@
 @import "tailwindcss";
 
-/* Inter font loaded via Google Fonts link in index.html */
-
 :root {
-  --os-desktop: #1e1e2e;
-  --os-window-bg: #313244;
-  --os-window-border: #45475a;
-  --os-titlebar: #181825;
-  --os-titlebar-text: #cdd6f4;
-  --os-titlebar-inactive: #6c7086;
-  --os-dock: rgba(24, 24, 37, 0.85);
-  --os-menubar: #11111b;
-  --os-accent: #89b4fa;
-  --os-accent-hover: #74c7ec;
-  --os-text: #cdd6f4;
-  --os-text-muted: #a6adc8;
-  --os-surface: #45475a;
-  --os-surface-hover: #585b70;
-  --os-green: #a6e3a1;
-  --os-red: #f38ba8;
-  --os-yellow: #f9e2af;
-  --os-peach: #fab387;
-  --os-mauve: #cba6f7;
-  --os-overlay: rgba(0, 0, 0, 0.5);
+  --os-desktop: #0a0e17;
+  --os-window-bg: #0c121ed1;
+  --os-window-border: #00e5cc1f;
+  --os-titlebar: #080c16e6;
+  --os-titlebar-text: #e0e6f0;
+  --os-titlebar-inactive: #4a5568;
+  --os-dock: #0a101cbf;
+  --os-menubar: transparent;
+  --os-accent: #00e5cc;
+  --os-accent-hover: #00ffd5;
+  --os-text: #e0e6f0;
+  --os-text-muted: #6b7a8d;
+  --os-surface: #ffffff0f;
+  --os-surface-hover: #ffffff1a;
+  --os-green: #00e5cc;
+  --os-red: #ff4d6a;
+  --os-yellow: #ffb84d;
+  --os-peach: #ff8a4d;
+  --os-mauve: #a855f7;
+  --os-overlay: #0009;
+  --os-glass: #0c121ea6;
+  --os-glass-border: #ffffff14;
+  --os-glass-blur: blur(48px) saturate(150%);
 }
 
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #ffffff1a transparent;
 }
 
 html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
   color: var(--os-text);
   background: var(--os-desktop);
   user-select: none;
   -webkit-user-select: none;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #ffffff14; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #ffffff26; }
+
+@keyframes meshGradient {
+  0%, 100% { background-position: 0%; }
+  25% { background-position: 100% 0; }
+  50% { background-position: 100% 100%; }
+  75% { background-position: 0 100%; }
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+.desktop-bg {
+  background-image:
+    radial-gradient(at 75% 30%, #00e5cc0f 0%, transparent 50%),
+    radial-gradient(at 20% 70%, #0064780d 0%, transparent 50%),
+    radial-gradient(#0a0e17cc 0%, transparent 70%);
+  background-size: 200% 200%;
+  animation: meshGradient 40s ease-in-out infinite;
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--os-surface-hover);
-  border-radius: 3px;
+.glass-window {
+  background: var(--os-glass);
+  backdrop-filter: var(--os-glass-blur);
+  -webkit-backdrop-filter: var(--os-glass-blur);
+  border: 1px solid var(--os-glass-border);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--os-text-muted);
+.glass-window-active {
+  border-color: #00e5cc33;
+  box-shadow: 0 8px 40px #00000080, 0 0 1px #00e5cc4d, inset 0 1px #ffffff0a;
+}
+
+.glass-window-inactive {
+  border-color: var(--os-glass-border);
+  box-shadow: 0 4px 24px #0006;
 }

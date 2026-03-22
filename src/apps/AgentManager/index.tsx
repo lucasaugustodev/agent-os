@@ -130,7 +130,7 @@ export default function AgentManagerApp(_props: AppComponentProps) {
   };
 
   const removeCap = (i: number) => {
-    setForm((p) => ({ ...p, capabilities: (p.capabilities ?? []).filter((_, j) => j !== i) }));
+    setForm((p) => ({ ...p, capabilities: (p.capabilities ?? []).filter((_: string, j: number) => j !== i) }));
   };
 
   const setF = (key: keyof Agent, value: string) => setForm((p) => ({ ...p, [key]: value }));
@@ -324,7 +324,7 @@ export default function AgentManagerApp(_props: AppComponentProps) {
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {(form.capabilities ?? []).map((cap, i) => (
+                  {(typeof form.capabilities === "string" ? JSON.parse(form.capabilities || "[]") : (form.capabilities ?? [])).map((cap: string, i: number) => (
                     <span key={i}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
                       style={{ background: ACCENT + '15', color: ACCENT, border: '1px solid ' + ACCENT + '33' }}>

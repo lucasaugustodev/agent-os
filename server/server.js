@@ -121,6 +121,17 @@ app.use('/api/launcher', async (req, res) => {
   }
 });
 
+// --- Terminal proxy (ttyd) ---
+app.use("/terminal", async (req, res) => {
+  try {
+    const resp = await fetch("http://127.0.0.1:7681" + req.url, { method: req.method, headers: { ...req.headers, host: "127.0.0.1:7681" } });
+    const ct = resp.headers.get("content-type");
+    if (ct) res.setHeader("Content-Type", ct);
+    const buf = Buffer.from(await resp.arrayBuffer());
+    res.send(buf);
+  } catch { res.status(502).send("Terminal unavailable"); }
+});
+
 // --- SPA fallback ---
 app.get('*', (_req, res) => {
   if (existsSync(join(distDir, 'index.html'))) {

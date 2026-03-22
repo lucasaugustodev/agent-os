@@ -233,7 +233,6 @@
       };
       return;
     }
-    }
     if (action === 'finish') {
       await fetch('/api/onboarding/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ selectedProviders: [...selected], orchestratorModel: orchestratorChoice }) });
       overlay.remove();

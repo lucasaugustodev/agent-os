@@ -13,7 +13,7 @@ interface Thread {
 }
 
 interface ThreadEvent {
-  id: string;
+  id: string | number;
   type: string;
   content?: string;
   summary?: string;
@@ -81,24 +81,12 @@ export default function ThreadsApp(_props: AppComponentProps) {
       const resp = await fetch('/api/smol/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: msg, stream: true, threadId: selectedId }),
+        body: JSON.stringify({ message: msg, stream: false, threadId: selectedId }),
       });
-      const text = await resp.text();
-      const lines = text.split('\n');
-      let result = '';
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') continue;
-        try {
-          const ev = JSON.parse(data);
-          if ((ev.event === 'done' || ev.type === 'done') && (ev.result || ev.content)) result = ev.result || ev.content;
-        } catch {}
+      const data = await resp.json();
+      if (data.result) {
+        setEvents(prev => [...prev, { id: Date.now()+1, type: 'agent_response', agent_id: agent, content: data.result, created_at: new Date().toISOString() } as ThreadEvent]);
       }
-      if (result) {
-        setEvents(prev => [...prev, { id: Date.now()+1, type: 'agent_response', agent_id: agent, content: result, created_at: new Date().toISOString() }]);
-      }
-      setInput('');
       await fetchEvents(selectedId);
     } catch {}
     setSending(false);

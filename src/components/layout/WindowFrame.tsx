@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { X } from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { useWindowDrag } from '../../hooks/useWindowDrag';
 import { useWindowResize, type Edge } from '../../hooks/useWindowResize';
@@ -81,7 +82,7 @@ export function WindowFrame({
           if (!isForeground) bringToForeground(instanceId);
         }}
       >
-        {/* Window chrome with glass effect */}
+        {/* Window chrome */}
         <div
           className={`flex flex-col h-full rounded-2xl overflow-hidden glass-window ${
             isForeground ? 'glass-window-active' : 'glass-window-inactive'
@@ -97,22 +98,20 @@ export function WindowFrame({
             onPointerDown={handlePointerDown}
             onDoubleClick={() => toggleMaximize(instanceId)}
           >
-            {/* Title left side: optional icon + title */}
+            {/* Left: icon + title */}
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {icon}
               <span
                 className="text-xs font-medium tracking-wide truncate"
-                style={{
-                  color: isForeground ? 'var(--os-text)' : 'var(--os-text-muted)',
-                }}
+                style={{ color: isForeground ? 'var(--os-text)' : 'var(--os-text-muted)' }}
               >
                 {title}
               </span>
             </div>
 
-            {/* Traffic light buttons - right side */}
+            {/* Right: traffic light buttons */}
             <div className="flex items-center gap-2 shrink-0">
-              {/* Minimize */}
+              {/* Minimize (yellow on hover) */}
               <button
                 className="w-3 h-3 rounded-full transition-all hover:scale-110 cursor-pointer"
                 style={{
@@ -131,7 +130,7 @@ export function WindowFrame({
                   (e.target as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
                 }}
               />
-              {/* Close */}
+              {/* Close (red on hover, X icon) */}
               <button
                 className="w-3 h-3 rounded-full transition-all hover:scale-110 cursor-pointer flex items-center justify-center"
                 style={{
@@ -150,16 +149,7 @@ export function WindowFrame({
                   (e.target as HTMLButtonElement).style.background = 'rgba(255,255,255,0.08)';
                 }}
               >
-                <svg
-                  width="7"
-                  height="7"
-                  viewBox="0 0 7 7"
-                  className="opacity-0 hover:opacity-100 pointer-events-none"
-                  style={{ color: '#fff' }}
-                >
-                  <line x1="1" y1="1" x2="6" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  <line x1="6" y1="1" x2="1" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
+                <X size={7} className="opacity-0 hover:opacity-100" style={{ color: '#fff' }} />
               </button>
             </div>
           </div>

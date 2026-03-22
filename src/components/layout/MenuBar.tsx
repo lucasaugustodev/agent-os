@@ -3,49 +3,54 @@ import { useAppStore } from '../../stores/useAppStore';
 
 export function MenuBar() {
   const [time, setTime] = useState(new Date());
+  const [cpu] = useState(() => Math.floor(Math.random() * 15) + 5);
+  const [mem] = useState(() => (Math.random() * 4 + 6).toFixed(1));
   const instances = useAppStore((s) => s.instances);
 
   useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 10_000);
+    const timer = setInterval(() => setTime(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
 
   const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const dateStr = time.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 
   return (
     <div
-      className="fixed top-0 left-0 right-0 h-8 flex items-center px-4 gap-4 z-[1001] select-none"
-      style={{
-        background: 'var(--os-menubar)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
-      }}
+      className="fixed top-4 right-5 flex items-center gap-4 z-[1001] select-none"
     >
-      {/* AgentOS branding */}
       <div
-        className="flex items-center gap-1.5 text-sm font-semibold tracking-wide"
-        style={{ color: 'var(--os-accent)' }}
+        className="flex items-center gap-4 px-4 py-1.5 rounded-full text-[11px] tracking-wide"
+        style={{
+          background: 'rgba(10, 16, 28, 0.6)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255,255,255,0.06)',
+        }}
       >
-        <span
-          className="w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold"
-          style={{ background: 'var(--os-accent)', color: '#0a0e17' }}
-        >
-          A
-        </span>
-        <span>AgentOS</span>
-      </div>
+        {/* CPU */}
+        <div className="flex items-center gap-1.5">
+          <span style={{ color: 'var(--os-text-muted)' }}>CPU</span>
+          <span className="font-medium" style={{ color: 'var(--os-text)' }}>{cpu}%</span>
+        </div>
 
-      {/* Spacer */}
-      <div className="flex-1" />
+        {/* MEM */}
+        <div className="flex items-center gap-1.5">
+          <span style={{ color: 'var(--os-text-muted)' }}>MEM</span>
+          <span className="font-medium" style={{ color: 'var(--os-text)' }}>{mem}GB</span>
+        </div>
 
-      {/* Right side: open count + date/time */}
-      <div className="flex items-center gap-3 text-xs" style={{ color: 'var(--os-text-muted)' }}>
-        <span>{instances.length} open</span>
-        <span>{dateStr}</span>
-        <span className="font-medium" style={{ color: 'var(--os-text)' }}>
-          {timeStr}
-        </span>
+        {/* Window count badge */}
+        {instances.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ background: 'var(--os-accent)' }}
+            />
+            <span style={{ color: 'var(--os-text-muted)' }}>{instances.length}</span>
+          </div>
+        )}
+
+        {/* Time */}
+        <span className="font-medium" style={{ color: 'var(--os-accent)' }}>{timeStr}</span>
       </div>
     </div>
   );

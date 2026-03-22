@@ -1,27 +1,24 @@
 import { motion } from 'framer-motion';
+import {
+  Grid3x3,
+  Terminal,
+  Globe,
+  FolderOpen,
+  Activity,
+  Settings,
+  Zap,
+} from 'lucide-react';
 import { useAppStore } from '../../stores/useAppStore';
 import { getRegistry } from '../../config/appRegistry';
 
-// Emoji map for dock icons matching the old design
-const DOCK_EMOJI: Record<string, string> = {
-  globe: '◎',
-  terminal: '>',
-  messageSquare: '💬',
-  inbox: '📋',
-  brain: '🧠',
-  layoutDashboard: '🔀',
-  bot: '🤖',
-  folderOpen: '📁',
-  activity: '⚡',
-  gitBranch: '⌥',
-  database: '◆',
-  container: '🐳',
-  settings: '⚙',
-};
-
-function getEmoji(iconName: string): string {
-  return DOCK_EMOJI[iconName] ?? iconName.charAt(0).toUpperCase();
-}
+const DOCK_APPS = [
+  { id: 'agents', icon: Grid3x3, label: 'Fleet' },
+  { id: 'terminal', icon: Terminal, label: 'Terminal' },
+  { id: 'browser', icon: Globe, label: 'Browser' },
+  { id: 'file-explorer', icon: FolderOpen, label: 'Files' },
+  { id: 'pm2-manager', icon: Activity, label: 'PM2' },
+  { id: 'settings', icon: Settings, label: 'Settings' },
+];
 
 export function Dock() {
   const instances = useAppStore((s) => s.instances);
@@ -31,7 +28,6 @@ export function Dock() {
   const bringToForeground = useAppStore((s) => s.bringToForeground);
 
   const registry = getRegistry();
-  const pinnedApps = registry.filter((app) => app.dockPinned);
   const runningAppIds = new Set(instances.map((i) => i.appId));
 
   function handleDockClick(appId: string) {
@@ -52,7 +48,14 @@ export function Dock() {
     }
   }
 
-  const nonPinnedRunning = [...runningAppIds].filter((id) => !pinnedApps.find((p) => p.id === id));
+  function handleSynthesize() {
+    const entry = registry.find((a) => a.id === 'agents');
+    launchApp('agents', {
+      title: 'Synthesize Agent',
+      size: entry?.defaultSize,
+      data: { view: 'create' },
+    });
+  }
 
   return (
     <motion.div
@@ -61,7 +64,7 @@ export function Dock() {
       transition={{ delay: 0.3, duration: 0.4, ease: [0.2, 0, 0, 1] }}
       className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-2 rounded-2xl z-[1000]"
       style={{
-        background: 'rgba(10, 16, 28, 0.70)',
+        background: 'rgba(10, 16, 28, 0.7)',
         backdropFilter: 'blur(48px) saturate(150%)',
         border: '1px solid rgba(255,255,255,0.08)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
@@ -73,98 +76,48 @@ export function Dock() {
         whileTap={{ scale: 0.97 }}
         className="flex items-center gap-2 px-4 py-2 rounded-xl mr-1 cursor-pointer"
         style={{ background: 'var(--os-accent)', color: '#0a0e17' }}
-        onClick={() => {
-          const entry = registry.find((a) => a.id === 'agents');
-          launchApp('agents', { title: 'Agent Manager', size: entry?.defaultSize, data: { view: 'create' } });
-        }}
+        onClick={handleSynthesize}
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <Zap size={15} strokeWidth={2.5} />
         <span className="text-xs font-semibold tracking-wide whitespace-nowrap">Synthesize Agent</span>
       </motion.button>
 
       {/* Separator */}
       <div className="w-px h-7 mx-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
 
-      {pinnedApps.map((app) => {
+      {DOCK_APPS.map((app) => {
         const isRunning = runningAppIds.has(app.id);
         const isFocused = instances.some(
           (i) => i.appId === app.id && i.instanceId === foregroundInstanceId
         );
-        const emoji = getEmoji(app.icon);
+        const Icon = app.icon;
 
         return (
           <motion.button
             key={app.id}
-            whileHover={{ scale: 1.1, y: -3 }}
+            whileHover={{ scale: 1.12, y: -2 }}
             whileTap={{ scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-            className="flex flex-col items-center gap-0.5 p-1.5 rounded-xl cursor-pointer relative"
+            transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+            className="relative flex flex-col items-center p-2 rounded-xl cursor-pointer"
             style={{ color: isFocused ? 'var(--os-accent)' : 'var(--os-text-muted)' }}
             onClick={() => handleDockClick(app.id)}
-            title={app.name}
+            title={app.label}
           >
             <div
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-base transition-all"
+              className="w-10 h-10 flex items-center justify-center rounded-xl transition-colors"
               style={{
-                background: isFocused
-                  ? 'rgba(0, 229, 204, 0.12)'
-                  : 'rgba(255,255,255,0.04)',
-                border: isFocused
-                  ? '1px solid rgba(0, 229, 204, 0.2)'
-                  : '1px solid rgba(255,255,255,0.05)',
+                background: isFocused ? 'rgba(0, 229, 204, 0.1)' : 'rgba(255, 255, 255, 0.03)',
               }}
             >
-              {emoji}
+              <Icon size={20} />
             </div>
-            {/* Running dot */}
             <div
-              className="w-1 h-1 rounded-full transition-opacity"
+              className="absolute -bottom-0.5 w-1 h-1 rounded-full transition-opacity"
               style={{
                 background: 'var(--os-accent)',
                 opacity: isRunning ? 1 : 0,
               }}
             />
-          </motion.button>
-        );
-      })}
-
-      {/* Separator for non-pinned running apps */}
-      {nonPinnedRunning.length > 0 && (
-        <div
-          className="w-px h-7 mx-1"
-          style={{ background: 'rgba(255,255,255,0.08)' }}
-        />
-      )}
-
-      {/* Non-pinned running apps */}
-      {nonPinnedRunning.map((appId) => {
-        const entry = registry.find((a) => a.id === appId);
-        const isFocused = instances.some(
-          (i) => i.appId === appId && i.instanceId === foregroundInstanceId
-        );
-        const emoji = getEmoji(entry?.icon ?? 'appWindow');
-
-        return (
-          <motion.button
-            key={appId}
-            whileHover={{ scale: 1.1, y: -3 }}
-            whileTap={{ scale: 0.95 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-            className="flex flex-col items-center gap-0.5 p-1.5 rounded-xl cursor-pointer"
-            style={{ color: isFocused ? 'var(--os-accent)' : 'var(--os-text-muted)' }}
-            onClick={() => handleDockClick(appId)}
-            title={entry?.name ?? appId}
-          >
-            <div
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-base"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.05)',
-              }}
-            >
-              {emoji}
-            </div>
-            <div className="w-1 h-1 rounded-full" style={{ background: 'var(--os-accent)' }} />
           </motion.button>
         );
       })}
